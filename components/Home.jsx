@@ -6,6 +6,7 @@ import OverlayPreview from "./previews/OverlayPreview";
 import ToasterPreview from "./previews/ToasterPreview";
 import RewardTilesPreview from "./previews/RewardTilesPreview";
 import MPPPreview from "./previews/MPPPreview";
+import PATPreview from "./previews/PATPreview";
 
 export default function HomeClient({ setFieldMap }) {
   const [url, setURL] = useState("");
@@ -56,7 +57,36 @@ export default function HomeClient({ setFieldMap }) {
         "termsandconditions",
         "visibleinlist",
       ];
+      const patFields = [
+        "allowedlabels",
+        "allowedlanguages",
+        "assetsroot",
+        "carouselbackgroundimage",
+        "firstslabimage",
+        "fulltermsandconditions",
+        "image",
+        "keytermsandconditions",
+        "manualdatapoints",
+        "playnow",
+        "prizemessage",
+        "prizes",
+        "promocreatedate",
+        "promodisplayenddate",
+        "promoenddate",
+        "promoid",
+        "promoname",
+        "promostartdate",
+        "promoteaserinfo",
+        "promotype",
+        "slabimage",
+        "stepimage",
+        "steps",
+        "teaserimage",
+        "transactiondescription",
+      ];
+
       setIsMPP(mppFields.every((key) => key in newMap));
+      setIsPAT(patFields.every((key) => key in newMap));
       console.log(newMap);
     } catch (err) {
       console.error("Error fetching data:", err);
@@ -67,6 +97,16 @@ export default function HomeClient({ setFieldMap }) {
     if (url) fetchData();
   }, [url]);
 
+  useEffect(() => {
+    if (isMPP) {
+      setViewMode("mpp");
+    } else if (isPAT) {
+      setViewMode("pat");
+    } else {
+      setViewMode("inbox"); // or whatever your default is
+    }
+  }, [isMPP, isPAT]);
+
   const fieldMap = Object.fromEntries(fields.map((f) => [f.key, f.html]));
 
   const previews = {
@@ -75,12 +115,16 @@ export default function HomeClient({ setFieldMap }) {
         fieldMap={fieldMap}
         dateTimeToday={dateTimeToday}
         isMPP={isMPP}
+        isPAT={isPAT}
       />
     ),
-    overlay: <OverlayPreview fieldMap={fieldMap} isMPP={isMPP} />,
-    toaster: <ToasterPreview fieldMap={fieldMap} isMPP={isMPP} />,
-    rewardtiles: <RewardTilesPreview fieldMap={fieldMap} isMPP={isMPP} />,
-    mpp: <MPPPreview fieldMap={fieldMap} />,
+    overlay: <OverlayPreview fieldMap={fieldMap} isMPP={isMPP} isPAT={isPAT} />,
+    toaster: <ToasterPreview fieldMap={fieldMap} isMPP={isMPP} isPAT={isPAT} />,
+    rewardtiles: (
+      <RewardTilesPreview fieldMap={fieldMap} isMPP={isMPP} isPAT={isPAT} />
+    ),
+    mpp: <MPPPreview fieldMap={fieldMap} isPAT={isPAT} />,
+    pat: <PATPreview fieldMap={fieldMap} isPAT={isMPP} />,
   };
 
   return (
@@ -104,20 +148,29 @@ export default function HomeClient({ setFieldMap }) {
 
           {/* Toggle View Mode */}
           <div className="btn-group mb-3">
-            {["mpp", "inbox", "overlay", "toaster", "rewardtiles"].map(
-              (mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className={`btn btn-outline-secondary ${
-                    viewMode === mode ? "active" : ""
-                  }`}
-                  onClick={() => setViewMode(mode)}
-                >
-                  {mode.toUpperCase()}
-                </button>
-              )
-            )}
+            {[
+              // show only these if neither MPP nor PAT is allowed
+              ...(!isMPP && !isPAT
+                ? ["inbox", "overlay", "toaster", "rewardtiles"]
+                : []),
+
+              // show MPP when allowed
+              ...(isMPP ? ["mpp"] : []),
+
+              // show PAT when allowed
+              ...(isPAT ? ["pat"] : []),
+            ].map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={`btn btn-outline-secondary ${
+                  viewMode === mode ? "active" : ""
+                }`}
+                onClick={() => setViewMode(mode)}
+              >
+                {mode.toUpperCase()}
+              </button>
+            ))}
           </div>
 
           {/* Preview Display */}
