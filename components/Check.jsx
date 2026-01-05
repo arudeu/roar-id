@@ -284,6 +284,11 @@ export default function Check({ fieldMap, viewMode }) {
       /\$\d+(\/\d+){2,}/g,
       "Use 'up to $XX, $XX, $XX' instead of slashes for amount tiers"
     );
+    // Detects "(Link to...)" patterns
+    pushMatch(
+      /\(Link to [^)]+\)/gi,
+      'Contains placeholder "(Link to ...)", please replace with actual link text or remove'
+    );
 
     try {
       const parser = new DOMParser();

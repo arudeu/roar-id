@@ -7,6 +7,7 @@ import ToasterPreview from "./previews/ToasterPreview";
 import RewardTilesPreview from "./previews/RewardTilesPreview";
 import MPPPreview from "./previews/MPPPreview";
 import PATPreview from "./previews/PATPreview";
+import CreativePreview from "./previews/CreativePreview";
 
 export default function HomeClient({ setFieldMap }) {
   const [url, setURL] = useState("");
@@ -15,6 +16,8 @@ export default function HomeClient({ setFieldMap }) {
   const [viewMode, setViewMode] = useState("inbox");
   const [isMPP, setIsMPP] = useState(false);
   const [isPAT, setIsPAT] = useState(false);
+  const [isCreative, setIsCreative] = useState(false);
+  const [creativeFields, setCreativeFields] = useState([]);
 
   const fetchData = async () => {
     const base = process.env.NEXT_PUBLIC_API_BASE;
@@ -32,6 +35,19 @@ export default function HomeClient({ setFieldMap }) {
         html: n.textContent,
       }));
 
+      const itemExtracted = Array.from(xml.querySelectorAll("item")).map(
+        (item) => {
+          const fields = Array.from(item.querySelectorAll("field"));
+
+          return fields.reduce((obj, field) => {
+            const key = field.getAttribute("key");
+            const value = field.textContent.trim();
+            obj[key] = value;
+            return obj;
+          }, {});
+        }
+      );
+
       const formattedDate = new Date().toLocaleString("en-US", {
         year: "numeric",
         month: "2-digit",
@@ -43,8 +59,15 @@ export default function HomeClient({ setFieldMap }) {
       });
 
       const newMap = Object.fromEntries(extracted.map((f) => [f.key, f.html]));
+      const itemMap = Object.fromEntries(
+        itemExtracted.map((f) => [
+          f.alt, // map key
+          { ...f },
+        ])
+      );
       setFields(extracted);
       setFieldMap(newMap);
+      setCreativeFields(itemMap);
       setDateToday(formattedDate);
 
       const mppFields = [
@@ -84,9 +107,26 @@ export default function HomeClient({ setFieldMap }) {
         "teaserimage",
         "transactiondescription",
       ];
+      const creativeFields = [
+        "height",
+        "width",
+        "dimensions",
+        "extension",
+        "mediahash",
+        "mime type",
+        "size",
+        "blob",
+        "alt",
+      ];
 
       setIsMPP(mppFields.every((key) => key in newMap));
       setIsPAT(patFields.every((key) => key in newMap));
+      const allValid = Object.values(itemMap).every((item) =>
+        creativeFields.every((key) => key in item)
+      );
+
+      setIsCreative(allValid);
+      console.log(itemMap);
       console.log(newMap);
     } catch (err) {
       console.error("Error fetching data:", err);
@@ -102,10 +142,12 @@ export default function HomeClient({ setFieldMap }) {
       setViewMode("mpp");
     } else if (isPAT) {
       setViewMode("pat");
+    } else if (isCreative) {
+      setViewMode("creative");
     } else {
-      setViewMode("inbox"); // or whatever your default is
+      setViewMode("inbox");
     }
-  }, [isMPP, isPAT]);
+  }, [isMPP, isPAT, isCreative]);
 
   const fieldMap = Object.fromEntries(fields.map((f) => [f.key, f.html]));
 
@@ -125,6 +167,7 @@ export default function HomeClient({ setFieldMap }) {
     ),
     mpp: <MPPPreview fieldMap={fieldMap} isPAT={isPAT} />,
     pat: <PATPreview fieldMap={fieldMap} isPAT={isMPP} />,
+    creative: <CreativePreview fieldMap={fieldMap} />,
   };
 
   return (
@@ -150,7 +193,7 @@ export default function HomeClient({ setFieldMap }) {
           <div className="btn-group mb-3">
             {[
               // show only these if neither MPP nor PAT is allowed
-              ...(!isMPP && !isPAT
+              ...(!isMPP && !isPAT && !isCreative
                 ? ["inbox", "overlay", "toaster", "rewardtiles"]
                 : []),
 
@@ -159,6 +202,9 @@ export default function HomeClient({ setFieldMap }) {
 
               // show PAT when allowed
               ...(isPAT ? ["pat"] : []),
+
+              // show Creative when allowed
+              ...(isCreative ? ["creative"] : []),
             ].map((mode) => (
               <button
                 key={mode}
