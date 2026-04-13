@@ -63,7 +63,7 @@ function highlightErrorsPlugin(errors = []) {
         errors.forEach(({ errorText }) => {
           const regex = new RegExp(
             errorText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-            "gi"
+            "gi",
           );
           for (const match of text.matchAll(regex)) {
             const start = match.index;
@@ -74,7 +74,7 @@ function highlightErrorsPlugin(errors = []) {
               Decoration.mark({
                 class: "cm-error-highlight",
                 attributes: { title: "⚠️ " + errorText },
-              })
+              }),
             );
           }
         });
@@ -84,7 +84,7 @@ function highlightErrorsPlugin(errors = []) {
     },
     {
       decorations: (v) => v.decorations,
-    }
+    },
   );
 }
 
@@ -100,7 +100,7 @@ export default function Check({ fieldMap, viewMode }) {
     Object.entries(fieldMap || {}).map(([key, val]) => {
       let cleanVal = val.trim();
       return [key, cleanVal];
-    })
+    }),
   );
 
   const fieldLabels = {
@@ -215,36 +215,36 @@ export default function Check({ fieldMap, viewMode }) {
         !/\b(0?[1-9]|1[0-2]):[0-5][0-9](?::[0-5][0-9])?\s(AM|PM)\b/.test(m[0])
       ) {
         issues.push(
-          `Incorrect time format. Use HH:MM AM/PM (e.g., 10:00 AM) → “${m[0]}”`
+          `Incorrect time format. Use HH:MM AM/PM (e.g., 10:00 AM) → “${m[0]}”`,
         );
       }
     });
     // Detect 24 hour time format
     pushMatch(
       /\b([01]\d|2[0-3]):[0-5]\d\sEST\b/g,
-      "Contains time with EST (e.g., 12:00 EST)"
+      "Contains time with EST (e.g., 12:00 EST)",
     );
     pushMatch(
       /\b([01]\d|2[0-3]):[0-5]\d\sET\b/g,
-      "Contains time with EST (e.g., 12:00 ET)"
+      "Contains time with EST (e.g., 12:00 ET)",
     );
 
     pushMatch(
       /[\u200B\u200A\u2002\u2003\u2009\u202F]/g,
-      "Contains invisible special space"
+      "Contains invisible special space",
     );
     pushMatch(/\$\$/g, "Contains double dollar signs ($$). Use a single $");
     pushMatch(/%%/g, "Contains double percent signs (%%). Use a single %");
     pushMatch(
       /[!?]{2,}/g,
-      "Contains multiple punctuation marks (e.g., !!, ??)"
+      "Contains multiple punctuation marks (e.g., !!, ??)",
     );
     pushMatch(/\$\s+\d|\d\s+\$/g, "Space detected between $ and number");
     pushMatch(/&nbsp;/g, "Contains non-breaking space (&nbsp;)");
     pushMatch(/<(\w+)>\s*<\/\1>/gi, "Contains empty HTML tag");
     pushMatch(
       /<br\s*\/?>/gi,
-      "Contains line break tag (<br>). Use spaces instead"
+      "Contains line break tag (<br>). Use spaces instead",
     );
     pushMatch(/[a-zA-Z],[A-Za-z]/g, "Missing space after comma");
     pushMatch(/\S {2,}/g, "Contains multiple consecutive spaces");
@@ -252,43 +252,70 @@ export default function Check({ fieldMap, viewMode }) {
     pushMatch(/rewards\(s\)/gi, "Incorrect plural form: 'rewards(s)'");
     pushMatch(
       /OLG\s+Internal\s+Control\s+Trigger\s+Based/gi,
-      "Contains OLG line (remove for non-NJ states)"
+      "Contains OLG line (remove for non-NJ states)",
     );
     pushMatch(
       /\b(\d+)(st|nd|rd|th)\b(?!<\/sup>)/gi,
-      "Ordinal missing <sup> tag (e.g., 3<sup>rd</sup>)"
+      "Ordinal missing <sup> tag (e.g., 3<sup>rd</sup>)",
+    );
+    // Detects <strong>.</strong> (a common issue when copying from Word with bold formatting)
+    pushMatch(
+      /<strong>\s*.\s*<\/strong>/gi,
+      "Contains <strong> tag with only a dot inside, likely from copying from Word. Consider removing the tags.",
     );
     pushMatch(
       /[™®©]/g,
-      "Use HTML entities for ™, ®, and © (e.g., &trade;, &reg;, &copy;)"
+      "Use HTML entities for ™, ®, and © (e.g., &trade;, &reg;, &copy;)",
     );
     // Detects any double words like bonus bonus or free free. Ignore if btn btn or table table (common in HTML)
     pushMatch(
       /\b(?!btn\b)(?!table\b)([a-zA-Z]+)\s+\1\b/g,
-      "Contains repeated word"
+      "Contains repeated word",
     );
 
     // Detects missing comma in numbers $1000 instead of $1,000
     pushMatch(
       /\$\d{4,}/g,
-      "Large number missing comma (e.g., use $1,000 instead of $1000)"
+      "Large number missing comma (e.g., use $1,000 instead of $1000)",
     );
 
     // Detects amount tier (e.g. $XX/$XX/$XX/$XX) but not dates (e.g. 10/20/2024)
     pushMatch(
       /\$\d+(\/\$\d+){2,}/g,
-      "Use 'up to $XX, $XX, $XX' instead of slashes for amount tiers"
+      "Use 'up to $XX, $XX, $XX' instead of slashes for amount tiers",
     );
     //Detects amount tier with dollar sign only on first amount (e.g. $XX/XX/XX)
     pushMatch(
       /\$\d+(\/\d+){2,}/g,
-      "Use 'up to $XX, $XX, $XX' instead of slashes for amount tiers"
+      "Use 'up to $XX, $XX, $XX' instead of slashes for amount tiers",
     );
     // Detects "(Link to...)" patterns
     pushMatch(
       /\(Link to [^)]+\)/gi,
-      'Contains placeholder "(Link to ...)", please replace with actual link text or remove'
+      'Contains placeholder "(Link to ...)", please replace with actual link text or remove',
     );
+    // Check if there are multiple tiles. If multiple tiles, the header should be
+    //  "Click Tiles Below To Play Eligible Games" else "Click Tile Below To Play Eligible Game"
+    // To determine if tile, href should contain "launchng".
+    const tileLinks = [...value.matchAll(/href="([^"]*launchng[^"]*)"/gi)];
+    if (tileLinks.length > 1) {
+      const singleTileHeaderPattern =
+        /Click\s+Tile\s+Below\s+To\s+Play\s+Eligible\s+Game/gi;
+      if (singleTileHeaderPattern.test(value)) {
+        issues.push(
+          'Multiple tiles detected, but header says "Click Tile Below To Play Eligible Game". Consider changing to "Click Tiles Below To Play Eligible Games".',
+        );
+      }
+    } else if (tileLinks.length === 1) {
+      const multiTileHeaderPattern =
+        /Click\s+Tiles\s+Below\s+To\s+Play\s+Eligible\s+Games/gi;
+      if (multiTileHeaderPattern.test(value)) {
+        issues.push(
+          'Single tile detected, but header says "Click Tiles Below To Play Eligible Games". Consider changing to "Click Tile Below To Play Eligible Game".',
+        );
+      }
+    }
+    if (issues.length === 0) return null;
 
     try {
       const parser = new DOMParser();
@@ -427,7 +454,7 @@ export default function Check({ fieldMap, viewMode }) {
     const text = view.state.doc.toString();
     const regex = new RegExp(
       errorText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-      "i"
+      "i",
     );
     const match = regex.exec(text);
 
@@ -502,8 +529,8 @@ export default function Check({ fieldMap, viewMode }) {
                                   const match = issue.match(/→ “(.*?)”/);
                                   return match ? { errorText: match[1] } : null;
                                 })
-                                .filter(Boolean)
-                            )
+                                .filter(Boolean),
+                            ),
                         ),
                       ]}
                       onChange={(value) => handleChange(field, value)}
