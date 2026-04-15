@@ -25,7 +25,7 @@ export default function HomeClient({ setFieldMap }) {
     try {
       const newUrl = url.replace(/[{}]/g, "");
       const res = await fetch(
-        `${base}/${newUrl}?depth=2&lang=en-US&culture=en-US&environment=prod&x-bwin-accessid=${accessId}&source=prod`
+        `${base}/${newUrl}?depth=2&lang=en-US&culture=en-US&environment=prod&x-bwin-accessid=${accessId}&source=prod`,
       );
       const text = await res.text();
       const xml = new DOMParser().parseFromString(text, "application/xml");
@@ -45,7 +45,7 @@ export default function HomeClient({ setFieldMap }) {
             obj[key] = value;
             return obj;
           }, {});
-        }
+        },
       );
 
       const formattedDate = new Date().toLocaleString("en-US", {
@@ -63,7 +63,7 @@ export default function HomeClient({ setFieldMap }) {
         itemExtracted.map((f) => [
           f.alt, // map key
           { ...f },
-        ])
+        ]),
       );
       setFields(extracted);
       setFieldMap(newMap);
@@ -122,7 +122,7 @@ export default function HomeClient({ setFieldMap }) {
       setIsMPP(mppFields.every((key) => key in newMap));
       setIsPAT(patFields.every((key) => key in newMap));
       const allValid = Object.values(itemMap).every((item) =>
-        creativeFields.every((key) => key in item)
+        creativeFields.every((key) => key in item),
       );
 
       setIsCreative(allValid);
