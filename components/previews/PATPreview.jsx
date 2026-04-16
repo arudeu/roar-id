@@ -1,9 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { Tabs, Tab, Accordion, Carousel } from "react-bootstrap";
+import {
+  ProgressBar,
+  Tabs,
+  Tab,
+  Accordion,
+  Carousel,
+  Image,
+} from "react-bootstrap";
 
-export default function PATPreview({ fieldMap }) {
+export default function PATPreview({
+  fieldMap,
+  progress = 50,
+  isActive = true,
+  isLocked = true,
+}) {
   const [key, setKey] = useState("progress");
   const getSrc = (html) => html?.replace(/.*src="([^&]+)".*/, "$1");
 
@@ -51,6 +63,51 @@ export default function PATPreview({ fieldMap }) {
                   </Carousel.Caption>
                 </Carousel.Item>
               </Carousel>
+              <div className="criteria-steps d-flex align-items-center">
+                {/* Marker */}
+                <div className="criteria-steps-marker d-flex flex-column align-items-center me-3">
+                  <div className="criteria-steps-marker-txt"></div>
+
+                  <div className="criteria-steps-marker-dot position-relative">
+                    {isActive && (
+                      <i className="criteria-steps-marker-dot-icn criteria-steps-marker-dot-icn-active theme-check" />
+                    )}
+                    {isLocked && (
+                      <i className="criteria-steps-marker-dot-icn criteria-steps-marker-dot-icn-locked theme-locked-i" />
+                    )}
+                  </div>
+                </div>
+
+                {/* Slider */}
+                <div className="criteria-steps-slider flex-grow-1 position-relative mb-4">
+                  {/* Progress Bar */}
+                  <ProgressBar
+                    now={progress}
+                    className="criteria-steps-slider-progress"
+                    variant="custom-gold"
+                  />
+
+                  {/* Thumb */}
+                  <div
+                    className="criteria-steps-slider-thumb position-absolute"
+                    style={{
+                      left: `${progress}%`,
+                      transform: "translateX(-50%) translateY(-100%)",
+                    }}
+                  >
+                    {fieldMap.slabimage && (
+                      <Image
+                        src={getSrc(fieldMap.stepimage)}
+                        className="img-fluid "
+                        alt="Promo Banner"
+                        roundedCircle
+                        width={20}
+                        height={20}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </Tab>
