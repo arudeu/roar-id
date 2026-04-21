@@ -112,8 +112,35 @@ export default function PATPreview({
           </div>
         </Tab>
 
-        <Tab eventKey="overview" title="Overview">
-          <p className="mt-3">Overview content goes here...</p>
+        <Tab className="container" eventKey="overview" title="Overview">
+          <div className="row">
+            <div className="col-8">
+              <p
+                className="mt-3"
+                style={{
+                  color: "#63656a",
+                }}
+              >
+                {fieldMap.promoteaserinfo}
+              </p>
+              <h3
+                style={{
+                  color: "#63656a",
+                }}
+              >
+                <strong>{fieldMap.prizemessage}</strong>
+              </h3>
+            </div>
+            <div className="col-4">
+              {fieldMap.slabimage && (
+                <Image
+                  src={getSrc(fieldMap.image)}
+                  className="img-fluid mb-3"
+                  alt="Promo Banner"
+                />
+              )}
+            </div>
+          </div>
         </Tab>
 
         <Tab eventKey="how" title="How it works">
