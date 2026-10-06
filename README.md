@@ -34,3 +34,16 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+<<<<<<< HEAD
+=======
+
+---
+
+## RoarID notes
+
+- **UI**: Tailwind v4 + shadcn/ui (`components/ui/*`). Colours are unchanged: black navbar, gold `#d4b962`, animated rainbow “ID”, Monokai editor.
+- **Previews** (Inbox, Overlay, Toaster, …) are pure Tailwind + shadcn now; Bootstrap is gone. Sitecore HTML inside them is styled by the `.rich` class in `app/globals.css`.
+- **Checker engine**: `lib/html-checks.js` (pure JS, no React). Every issue has exact offsets, a severity, and often an auto-fix. Run the tests with `npm test`.
+- **Detection / fetching**: `lib/sitecore.js`. Field lists per view: `lib/fields.js`.
+- **Navigation**: Alt + ↑ / ↓ jumps between issues; hover a highlight for details and a one-click fix.
+>>>>>>> 8623917 (Updated overall look and improved code logic)
