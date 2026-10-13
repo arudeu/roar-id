@@ -19,7 +19,9 @@ function CreativeTile({ creative }) {
   const [broken, setBroken] = useState(false);
   const over = isOver(creative);
   const pct = creative.size === null ? 100 : Math.min(100, Math.round((creative.size / CREATIVE_MAX_SIZE) * 100));
-  const imageUrl = `${CDN}/${creative.blob}.${creative.template}`;
+  // The "image" template isn't a file extension, so use the item's real extension (e.g. png).
+  const ext = creative.template === "image" ? creative.extension || "png" : creative.template;
+  const imageUrl = `${CDN}/${creative.blob}.${ext}`;
 
   return (
     <article
@@ -63,7 +65,7 @@ function CreativeTile({ creative }) {
           {over ? "Too large" : "OK"}
         </span>
         <span className="absolute bottom-2 left-2 rounded bg-black/65 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
-          {creative.template}
+          {creative.extension || creative.template}
         </span>
       </div>
 
@@ -124,7 +126,7 @@ export default function CreativePreview({ creatives = [] }) {
   }, [creatives, filter]);
 
   if (creatives.length === 0) {
-    return <p className="text-destructive">No creative items (jpeg / png) with a blob field were found.</p>;
+    return <p className="text-destructive">No creative items (jpeg / image) with a blob field were found.</p>;
   }
 
   const counts = { all: creatives.length, over: overCount, ok: okCount };
