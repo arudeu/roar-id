@@ -110,7 +110,7 @@ export default function Home() {
             <Input
               id="sitecore-id"
               className="pl-9"
-              placeholder="Enter Sitecore ID"
+              placeholder="Enter Sitecore ID or DirectLink URL"
               value={id}
               onChange={(e) => setId(e.target.value)}
               autoComplete="off"

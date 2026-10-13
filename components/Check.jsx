@@ -2,7 +2,7 @@
 
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Eraser, Play, Undo2 } from "lucide-react";
+import { Diff, Eraser, Play, Undo2 } from "lucide-react";
 import { EditorView } from "@codemirror/view";
 
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import CodeField, { setActiveIssue } from "@/components/CodeField";
 import IssuePanel from "@/components/IssuePanel";
+import CompareModal from "@/components/CompareModal";
 import { CODE_FIELDS, FIELD_LABELS, fieldsForView } from "@/lib/fields";
 import { analyzeFields, applyFixes, compareWithSource } from "@/lib/html-checks";
 
@@ -54,6 +55,9 @@ export default function Check({ fieldMap, viewMode, sourceKey }) {
   }, [issues]);
 
   const [activeId, setActiveId] = useState(null);
+  const [compareField, setCompareField] = useState(null); // { field, label, value } while the modal is open
+  const closeCompare = useCallback(() => setCompareField(null), []);
+  useEffect(() => setCompareField(null), [sourceKey]);
   useEffect(() => {
     if (activeId && !issues.some((i) => i.id === activeId)) setActiveId(null);
   }, [issues, activeId]);
@@ -256,11 +260,26 @@ export default function Check({ fieldMap, viewMode, sourceKey }) {
                   <Badge variant="warning">Differs from Sitecore · jump to first difference</Badge>
                 </button>
               )}
-              {list.length > 0 && (
-                <Badge variant={errors ? "error" : "warning"} className="ml-auto">
-                  {plural(list.length, "issue")}
-                </Badge>
-              )}
+              <div className="ml-auto flex items-center gap-2">
+                {list.length > 0 && (
+                  <Badge variant={errors ? "error" : "warning"}>{plural(list.length, "issue")}</Badge>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setCompareField({
+                      field,
+                      label: FIELD_LABELS[field] || field,
+                      value: fieldMap?.[source || field] ?? "",
+                    })
+                  }
+                  title="Compare the fetched value with pasted text"
+                >
+                  <Diff /> Compare
+                </Button>
+              </div>
             </div>
 
             <CodeField
@@ -276,6 +295,15 @@ export default function Check({ fieldMap, viewMode, sourceKey }) {
           </div>
         );
       })}
+
+      {compareField && (
+        <CompareModal
+          key={compareField.field}
+          label={compareField.label}
+          fetched={compareField.value}
+          onClose={closeCompare}
+        />
+      )}
 
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Undo2 className="size-3" /> Hover a highlight for details and a one-click fix. Alt + ↑/↓ jumps between issues.
