@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 
 import { Badge } from "@/components/ui/badge";
-import { parseSteps } from "@/lib/pat";
+import { isImageUrl, parseSteps } from "@/lib/pat";
 import Rich from "./Rich";
 
 const MIN_STEPS = 2;
@@ -33,7 +33,12 @@ export default function HowItWorks({ steps: raw }) {
               {i + 1}
             </span>
             <div className="min-w-0 pt-1">
-              {step.title && <div className="text-sm font-bold tracking-wide uppercase">{step.title}</div>}
+              {step.title &&
+                (isImageUrl(step.title) ? (
+                  <img src={step.title} alt="" className="mb-1 size-6" />
+                ) : (
+                  <div className="text-sm font-bold tracking-wide uppercase">{step.title}</div>
+                ))}
               {step.text && <Rich html={step.text} className="text-sm text-[#63656a]" />}
             </div>
           </li>

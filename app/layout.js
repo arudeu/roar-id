@@ -1,4 +1,5 @@
 import "./globals.css";
+import Splash from "@/components/Splash";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -9,8 +10,15 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <script
+          // Apply the saved (or OS) colour scheme before first paint so there is no light flash.
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var t=localStorage.getItem('roarid-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark')}catch(e){}",
+          }}
+        />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link
@@ -19,6 +27,7 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body suppressHydrationWarning>
+        <Splash />
         <TooltipProvider>{children}</TooltipProvider>
         <Toaster />
       </body>

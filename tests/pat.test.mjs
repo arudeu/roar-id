@@ -93,3 +93,48 @@ test("PAT is detected only for the playeractivity template", () => {
   assert.notEqual(detectPageType(fields, {}, [], "somethingelse").type, "pat");
   assert.notEqual(detectPageType(fields, {}, []).type, "pat");
 });
+
+import { formatSitecoreDate, isImageUrl, parsePrizes } from "../lib/pat.js";
+
+test("leaderboard is a PAT page with its own checker fields", () => {
+  const d = detectPageType({ promoname: "x" }, {}, [], "leaderboard");
+  assert.equal(d.type, "pat");
+  assert.ok(d.isLeaderboard);
+  assert.deepEqual(d.modes, ["pat", "promohub"]);
+  assert.ok(!detectPageType({ promoname: "x" }, {}, [], "playeractivity").isLeaderboard);
+
+  const icon = "https://scmedia-us.itsfogo.com/$-$/f9a2b0ad132145f5a4c3a5d0f2cadb22.svg";
+  const steps = JSON.stringify([{ title: icon, description: "Opt in." }, { title: icon, description: "Earn." }]);
+  const defs = fieldsForView("leaderboard", { steps });
+  assert.deepEqual(
+    defs.map((d) => d.key),
+    ["promoname", "promoteaserinfo", "step1title", "step1description", "step2title", "step2description", "winupto", "fulltermsandconditions"],
+  );
+  assert.equal(defs.find((d) => d.key === "step1title").label, "Step 1 Icon");
+  assert.equal(fieldValues("leaderboard", { steps }).step2description, "Earn.");
+});
+
+test("icon URLs, dates and prize brackets", () => {
+  assert.ok(isImageUrl("https://scmedia-us.itsfogo.com/$-$/f9a2.svg"));
+  assert.ok(isImageUrl("https://x.com/a/b.png?x=1"));
+  assert.ok(!isImageUrl("OPT IN"));
+  assert.ok(!isImageUrl("https://example.com/page"));
+  assert.equal(formatSitecoreDate("20260924T150000"), "09/24/26 3:00 PM");
+  assert.equal(formatSitecoreDate("20261026T000500"), "10/26/26 12:05 AM");
+  assert.equal(formatSitecoreDate(""), "");
+
+  const prizes = parsePrizes(
+    JSON.stringify([
+      { SlabNo: "2", SlabType: "RANK", Min: "2", Max: "3", AwardDescription: "$5,000 Bonus Dollars" },
+      { SlabNo: "1", SlabType: "RANK", Min: "1", Max: "2", AwardDescription: "$10,000 Bonus Dollars" },
+      { SlabNo: "3", SlabType: "RANK", Min: "5", Max: "15", AwardDescription: "$500 Bonus Dollars" },
+    ]),
+  );
+  assert.deepEqual(prizes, [
+    { label: "#1", prize: "$10,000 Bonus Dollars" },
+    { label: "#2", prize: "$5,000 Bonus Dollars" },
+    { label: "#5 - #14", prize: "$500 Bonus Dollars" },
+  ]);
+  assert.deepEqual(parsePrizes("[]"), []);
+  assert.deepEqual(parsePrizes("nope"), []);
+});

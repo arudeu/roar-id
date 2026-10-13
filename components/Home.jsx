@@ -1,9 +1,10 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CircleAlert, Search } from "lucide-react";
+import { CircleAlert, RefreshCw, Search } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,7 @@ import ToasterPreview from "./previews/ToasterPreview";
 import RewardTilesPreview from "./previews/RewardTilesPreview";
 import MPPPreview from "./previews/MPPPreview";
 import PATPreview from "./previews/PATPreview";
+import LeaderboardPreview from "./previews/LeaderboardPreview";
 import PromohubTilePreview from "./previews/PromohubTilePreview";
 import CreativePreview from "./previews/CreativePreview";
 import { useDebouncedValue } from "@/lib/hooks";
@@ -39,10 +41,22 @@ export default function Home() {
   const [data, setData] = useState(null); // { fieldMap, itemMap, fetchedAt }
   const [viewMode, setViewMode] = useState("inbox");
 
-  const debouncedId = useDebouncedValue(cleanSitecoreId(id), 500);
+  const cleanedId = cleanSitecoreId(id);
+  const debouncedId = useDebouncedValue(cleanedId, 500);
+  // The ID actually being fetched: follows typing (debounced), or jumps ahead when Load is pressed.
+  const [fetchId, setFetchId] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => setFetchId(debouncedId), [debouncedId]);
+
+  const load = () => {
+    if (!cleanedId) return;
+    setFetchId(cleanedId);
+    setReloadKey((k) => k + 1);
+  };
 
   useEffect(() => {
-    if (!debouncedId) {
+    if (!fetchId) {
       setStatus("idle");
       setData(null);
       setError("");
@@ -51,7 +65,7 @@ export default function Home() {
     const controller = new AbortController();
     setStatus("loading");
     setError("");
-    fetchSitecoreItem(debouncedId, { signal: controller.signal })
+    fetchSitecoreItem(fetchId, { signal: controller.signal })
       .then((result) => {
         setData(result);
         setStatus("ready");
@@ -65,7 +79,7 @@ export default function Home() {
         toast.error("Couldn't load that item", { id: "fetch-error", description: err.message });
       });
     return () => controller.abort();
-  }, [debouncedId]);
+  }, [fetchId, reloadKey]);
 
   const fieldMap = useMemo(() => data?.fieldMap ?? {}, [data]);
   const detection = useMemo(
@@ -89,17 +103,23 @@ export default function Home() {
     toaster: <ToasterPreview fieldMap={fieldMap} isMPP={isMPP} isPAT={isPAT} />,
     rewardtiles: <RewardTilesPreview fieldMap={fieldMap} isMPP={isMPP} isPAT={isPAT} />,
     mpp: <MPPPreview fieldMap={fieldMap} isPAT={isPAT} />,
-    pat: <PATPreview fieldMap={fieldMap} isPAT={isPAT} />,
+    pat: detection.isLeaderboard ? (
+      <LeaderboardPreview fieldMap={fieldMap} />
+    ) : (
+      <PATPreview fieldMap={fieldMap} isPAT={isPAT} />
+    ),
     promohub: <PromohubTilePreview fieldMap={fieldMap} />,
     creative: <CreativePreview creatives={data?.creatives ?? []} />,
   };
 
   const activeMode = detection.modes.includes(viewMode) ? viewMode : detection.modes[0];
+  // A leaderboard is a PAT page, but its checker has different fields.
+  const checkMode = activeMode === "pat" && detection.isLeaderboard ? "leaderboard" : activeMode;
 
   return (
     <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
       <section aria-label="HTML check">
-        <Check fieldMap={fieldMap} viewMode={activeMode} sourceKey={sourceKey} title={MODE_LABELS[activeMode]} />
+        <Check fieldMap={fieldMap} viewMode={checkMode} sourceKey={sourceKey} title={MODE_LABELS[activeMode]} />
       </section>
 
       <section
@@ -108,18 +128,31 @@ export default function Home() {
       >
         <div className="space-y-1.5">
           <Label htmlFor="sitecore-id">Sitecore ID:</Label>
-          <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              id="sitecore-id"
-              className="pl-9"
-              placeholder="Enter Sitecore ID or DirectLink URL"
-              value={id}
-              onChange={(e) => setId(e.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              aria-invalid={status === "error" || undefined}
-            />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="sitecore-id"
+                className="pl-9"
+                placeholder="Enter Sitecore ID or DirectLink URL"
+                value={id}
+                onChange={(e) => setId(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && load()}
+                autoComplete="off"
+                spellCheck={false}
+                aria-invalid={status === "error" || undefined}
+              />
+            </div>
+            <Button
+              type="button"
+              onClick={load}
+              disabled={!cleanedId || status === "loading"}
+              aria-busy={status === "loading"}
+              className="min-w-28"
+            >
+              <RefreshCw className={status === "loading" ? "animate-spin" : undefined} />
+              {status === "loading" ? "Loading…" : status === "ready" ? "Reload" : "Load"}
+            </Button>
           </div>
         </div>
 
@@ -142,7 +175,7 @@ export default function Home() {
           )}
           {status === "loading" && (
             <div className="mt-2 space-y-2" aria-busy="true">
-              <p className="text-sm text-muted-foreground">Fetching data for: {debouncedId}</p>
+              <p className="text-sm text-muted-foreground">Fetching data for: {fetchId}</p>
               <Skeleton className="h-8 w-2/3" />
               <Skeleton className="h-48 w-full" />
             </div>
@@ -157,11 +190,11 @@ export default function Home() {
           {status === "ready" && (
             <>
               <p className="mt-1 mb-2 text-sm text-muted-foreground">
-                Fetched data for: {debouncedId}
+                Fetched data for: {fetchId}
               </p>
               <div
                 key={activeMode}
-                className="rounded-lg border bg-white p-4 text-[#212529]"
+                className="theme-light rounded-lg border bg-white p-4 text-[#212529]"
                 aria-label={`${MODE_LABELS[activeMode]} preview`}
               >
                 {previews[activeMode]}

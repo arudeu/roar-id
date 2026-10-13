@@ -6,7 +6,8 @@
 /* Palette is unchanged from the original app:
    black navbar, gold #d4b962 primary, the rainbow "ID" logo, Monokai editor,
    Bootstrap's danger red / body text / border greys. */
-:root {
+:root,
+.theme-light {
   --radius: 0.5rem;
   --background: #ffffff;
   --foreground: #212529;
@@ -31,6 +32,27 @@
   --warning: #f47523;
   --info: #5ac8e8;
   --editor: #272822;
+}
+
+/* Dark mode: toggled with the .dark class on <html>. Previews sit in a .theme-light
+   box (above) because they imitate the live site, which is light. */
+.dark {
+  color-scheme: dark;
+  --background: #121416;
+  --foreground: #e9ecef;
+  --card: #1a1d20;
+  --card-foreground: #e9ecef;
+  --popover: #1a1d20;
+  --popover-foreground: #e9ecef;
+  --secondary: #2a2e33;
+  --secondary-foreground: #e9ecef;
+  --muted: #23272b;
+  --muted-foreground: #9aa3ab;
+  --accent: #3a3421;
+  --accent-foreground: #f1ead2;
+  --destructive: #f0616d;
+  --border: #343a40;
+  --input: #454c53;
 }
 
 @theme inline {
