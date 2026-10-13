@@ -155,6 +155,16 @@ test("text hygiene", () => {
   has("<p></p>", "empty-tag");
   has("<strong>.</strong>", "strong-dot");
   lacks("<strong>$</strong>5", "strong-dot");
+  assert.equal(find("<em>.</em>", "strong-dot").severity, "error");
+  assert.equal(find("<strong>,</strong>", "strong-dot").severity, "error");
+  has('Win big<em class="x"> . </em> now', "strong-dot");
+  has("<u>!</u>", "strong-dot");
+  has("<i>&nbsp;-&nbsp;</i>", "strong-dot");
+  lacks("<em>A</em>", "strong-dot");
+  lacks("<em>Hello.</em>", "strong-dot");
+  lacks("<p>.</p>", "strong-dot");
+  lacks("<sup>*</sup>", "strong-dot");
+  assert.equal(applyFixes("Win<em>.</em> now", analyzeField("f", "Win<em>.</em> now")).value, "Win. now");
   has("a<br>b", "br-tag");
   has("(Link to terms)", "link-placeholder-text");
   has("This is great. This is great. And more.", "repeated-sentence");

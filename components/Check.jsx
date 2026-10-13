@@ -11,22 +11,24 @@ import { Label } from "@/components/ui/label";
 import CodeField, { setActiveIssue } from "@/components/CodeField";
 import IssuePanel from "@/components/IssuePanel";
 import CompareModal from "@/components/CompareModal";
-import { CODE_FIELDS, FIELD_LABELS, fieldsForView } from "@/lib/fields";
+import { CODE_FIELDS, FIELD_LABELS, fieldsForView, fieldValues } from "@/lib/fields";
 import { analyzeFields, applyFixes, compareWithSource } from "@/lib/html-checks";
 
 const RUN_TOAST = "html-check-run";
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-export default function Check({ fieldMap, viewMode, sourceKey }) {
-  const defs = useMemo(() => fieldsForView(viewMode), [viewMode]);
+export default function Check({ fieldMap, viewMode, sourceKey, title }) {
+  const defs = useMemo(() => fieldsForView(viewMode, fieldMap), [viewMode, fieldMap]);
+  // fetched values, including the generated per-step fields
+  const values = useMemo(() => fieldValues(viewMode, fieldMap), [viewMode, fieldMap]);
 
   const defaults = useMemo(
     () =>
       Object.fromEntries(
-        defs.map((d) => [d.key, d.prefill ? (fieldMap?.[d.source || d.key] ?? "") : ""]),
+        defs.map((d) => [d.key, d.prefill ? (values?.[d.source || d.key] ?? "") : ""]),
       ),
-    [defs, fieldMap],
+    [defs, values],
   );
 
   // Keep what you typed per view, so switching tabs doesn't wipe your work.
@@ -205,7 +207,7 @@ export default function Check({ fieldMap, viewMode, sourceKey }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h5 className="m-0 mr-auto text-lg font-bold capitalize">{viewMode}</h5>
+        <h5 className="m-0 mr-auto text-lg font-bold capitalize">{title ?? viewMode}</h5>
         <Button onClick={runValidation}>
           <Play /> Run HTML Check
         </Button>
@@ -228,10 +230,11 @@ export default function Check({ fieldMap, viewMode, sourceKey }) {
         />
       </div>
 
-      {defs.map(({ key: field, source }) => {
+      {defs.map(({ key: field, source, tab, hint, label, code }) => {
+        const fieldLabel = label || FIELD_LABELS[field] || field;
         const value = inputs[field] ?? "";
         const list = issuesByField[field] || [];
-        const compare = compareWithSource(value, fieldMap?.[source || field]);
+        const compare = compareWithSource(value, values?.[source || field]);
         const errors = list.filter((i) => i.severity === "error").length;
 
         return (
@@ -241,7 +244,8 @@ export default function Check({ fieldMap, viewMode, sourceKey }) {
             className="scroll-mt-40 space-y-1.5"
           >
             <div className="flex flex-wrap items-center gap-2">
-              <Label htmlFor={field}>{FIELD_LABELS[field] || field}:</Label>
+              <Label htmlFor={field}>{fieldLabel}:</Label>
+              {tab && <Badge variant="outline">{tab}</Badge>}
               {compare.status === "match" && <Badge variant="success">Matches Sitecore</Badge>}
               {compare.status === "diff" && compare.whitespaceOnly && (
                 <Badge variant="success">Matches Sitecore (extra whitespace)</Badge>
@@ -271,8 +275,8 @@ export default function Check({ fieldMap, viewMode, sourceKey }) {
                   onClick={() =>
                     setCompareField({
                       field,
-                      label: FIELD_LABELS[field] || field,
-                      value: fieldMap?.[source || field] ?? "",
+                      label: fieldLabel,
+                      value: values?.[source || field] ?? "",
                     })
                   }
                   title="Compare the fetched value with pasted text"
@@ -282,13 +286,15 @@ export default function Check({ fieldMap, viewMode, sourceKey }) {
               </div>
             </div>
 
+            {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+
             <CodeField
               field={field}
               value={value}
               analyzedValue={deferredInputs[field] ?? ""}
               issues={list}
-              compact={!CODE_FIELDS.has(field)}
-              placeholder={`Enter ${FIELD_LABELS[field] || field}`}
+              compact={!(code ?? CODE_FIELDS.has(field))}
+              placeholder={`Enter ${fieldLabel}`}
               onChange={(v) => setInputs((prev) => ({ ...prev, [field]: v }))}
               onView={registerView}
             />

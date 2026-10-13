@@ -16,6 +16,7 @@ import ToasterPreview from "./previews/ToasterPreview";
 import RewardTilesPreview from "./previews/RewardTilesPreview";
 import MPPPreview from "./previews/MPPPreview";
 import PATPreview from "./previews/PATPreview";
+import PromohubTilePreview from "./previews/PromohubTilePreview";
 import CreativePreview from "./previews/CreativePreview";
 import { useDebouncedValue } from "@/lib/hooks";
 import { cleanSitecoreId, detectPageType, fetchSitecoreItem, formatFetchedAt } from "@/lib/sitecore";
@@ -27,6 +28,7 @@ const MODE_LABELS = {
   rewardtiles: "Reward Tiles",
   mpp: "MPP",
   pat: "PAT",
+  promohub: "Promohub Tile",
   creative: "Creative",
 };
 
@@ -67,7 +69,7 @@ export default function Home() {
 
   const fieldMap = useMemo(() => data?.fieldMap ?? {}, [data]);
   const detection = useMemo(
-    () => detectPageType(fieldMap, data?.itemMap, data?.creatives),
+    () => detectPageType(fieldMap, data?.itemMap, data?.creatives, data?.template),
     [fieldMap, data],
   );
 
@@ -88,6 +90,7 @@ export default function Home() {
     rewardtiles: <RewardTilesPreview fieldMap={fieldMap} isMPP={isMPP} isPAT={isPAT} />,
     mpp: <MPPPreview fieldMap={fieldMap} isPAT={isPAT} />,
     pat: <PATPreview fieldMap={fieldMap} isPAT={isPAT} />,
+    promohub: <PromohubTilePreview fieldMap={fieldMap} />,
     creative: <CreativePreview creatives={data?.creatives ?? []} />,
   };
 
@@ -96,7 +99,7 @@ export default function Home() {
   return (
     <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
       <section aria-label="HTML check">
-        <Check fieldMap={fieldMap} viewMode={activeMode} sourceKey={sourceKey} />
+        <Check fieldMap={fieldMap} viewMode={activeMode} sourceKey={sourceKey} title={MODE_LABELS[activeMode]} />
       </section>
 
       <section

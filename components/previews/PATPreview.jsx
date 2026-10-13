@@ -5,6 +5,7 @@ import { ArrowLeft, Check, Lock } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Rich, { getSrc } from "./Rich";
+import HowItWorks from "./HowItWorks";
 
 export default function PATPreview({
   fieldMap,
@@ -110,7 +111,7 @@ export default function PATPreview({
         </TabsContent>
 
         <TabsContent value="how">
-          <p className="mt-3">How it works content goes here...</p>
+          <HowItWorks steps={fieldMap.steps} />
         </TabsContent>
       </Tabs>
 
