@@ -67,7 +67,7 @@ export default function Home() {
 
   const fieldMap = useMemo(() => data?.fieldMap ?? {}, [data]);
   const detection = useMemo(
-    () => detectPageType(fieldMap, data?.itemMap),
+    () => detectPageType(fieldMap, data?.itemMap, data?.creatives),
     [fieldMap, data],
   );
 
@@ -88,7 +88,7 @@ export default function Home() {
     rewardtiles: <RewardTilesPreview fieldMap={fieldMap} isMPP={isMPP} isPAT={isPAT} />,
     mpp: <MPPPreview fieldMap={fieldMap} isPAT={isPAT} />,
     pat: <PATPreview fieldMap={fieldMap} isPAT={isPAT} />,
-    creative: <CreativePreview fieldMap={fieldMap} />,
+    creative: <CreativePreview creatives={data?.creatives ?? []} />,
   };
 
   const activeMode = detection.modes.includes(viewMode) ? viewMode : detection.modes[0];
