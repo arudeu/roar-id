@@ -25,7 +25,8 @@ export const SEVERITY_ICON = {
   info: { Icon: Info, className: "text-[#1b8fb0]" },
 };
 
-function IssueRow({ issue, active, onSelect, onFix }) {
+function IssueRow({ issue, active, onSelect, onFix, onSuggest, onIgnore }) {
+  const spelling = issue.rule === "spelling";
   const { Icon, className } = SEVERITY_ICON[issue.severity];
   const ref = useRef(null);
 
@@ -61,7 +62,39 @@ function IssueRow({ issue, active, onSelect, onFix }) {
         </div>
         <p className="text-[13px] leading-snug text-muted-foreground">{issue.message}</p>
       </div>
-      {issue.fix && (
+      {spelling && (
+        <div className="flex shrink-0 flex-wrap justify-end gap-1">
+          {issue.suggestions?.slice(0, 3).map((word) => (
+            <Button
+              key={word}
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSuggest(issue, word);
+              }}
+            >
+              {word}
+            </Button>
+          ))}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onIgnore(issue.word);
+                }}
+              >
+                Ignore
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Add “{issue.word}” to the ignore list</TooltipContent>
+          </Tooltip>
+        </div>
+      )}
+      {!spelling && issue.fix && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -90,6 +123,8 @@ export default function IssuePanel({
   onSelect,
   onStep,
   onFix,
+  onSuggest,
+  onIgnore,
   onFixAll,
   fixableCount,
   hasContent,
@@ -203,6 +238,8 @@ export default function IssuePanel({
                     active={issue.id === activeId}
                     onSelect={onSelect}
                     onFix={onFix}
+                    onSuggest={onSuggest}
+                    onIgnore={onIgnore}
                   />
                 ))}
               </section>

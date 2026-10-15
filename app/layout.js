@@ -1,5 +1,6 @@
 import "./globals.css";
 import Splash from "@/components/Splash";
+import SpellProvider from "@/components/SpellProvider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -28,7 +29,9 @@ export default function RootLayout({ children }) {
       </head>
       <body suppressHydrationWarning>
         <Splash />
-        <TooltipProvider>{children}</TooltipProvider>
+        <TooltipProvider>
+          <SpellProvider>{children}</SpellProvider>
+        </TooltipProvider>
         <Toaster />
       </body>
     </html>

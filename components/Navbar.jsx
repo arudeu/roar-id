@@ -2,6 +2,7 @@
 import { motion } from "motion/react";
 import { GiLion } from "react-icons/gi";
 import { EASE, useRevealDelay } from "@/lib/splash";
+import SpellButton from "./SpellButton";
 import ThemeToggle from "./ThemeToggle";
 
 export default function Navbar() {
@@ -18,7 +19,10 @@ export default function Navbar() {
         <GiLion className="mr-1.5 mb-0.5" size={32} />
         ROAR<span className="logo-color">ID</span>
       </h3>
-      <ThemeToggle />
+      <div className="ml-auto flex items-center gap-1">
+        <SpellButton />
+        <ThemeToggle />
+      </div>
     </motion.nav>
   );
 }

@@ -161,8 +161,10 @@ test("converted HTML compares cleanly against copy", () => {
 
 import { tidyPaste } from "../lib/text-compare.js";
 
-test("pasting removes excess spaces but keeps line breaks", () => {
-  assert.equal(tidyPaste("  Line one   here \t\n\nLine   two  \r\n  Line three  "), "Line one here\n\nLine two\nLine three");
+test("pasting removes excess spaces and blank lines but keeps line breaks", () => {
+  assert.equal(tidyPaste("  Line one   here \t\n\nLine   two  \r\n  Line three  "), "Line one here\nLine two\nLine three");
+  assert.equal(tidyPaste("A\n\n\n\nB\n \t \n\nC\r\n\r\n\r\nD"), "A\nB\nC\nD");
+  assert.equal(tidyPaste("\n\n  Start\n\n"), "Start");
 });
 
 test("blank lines and spaces around line breaks are not differences", () => {
@@ -170,4 +172,49 @@ test("blank lines and spaces around line breaks are not differences", () => {
   assert.ok(compareTexts("Para one\nPara two", "Para one \n  Para two").identical);
   assert.ok(compareTexts("Para one\nPara two", "Para one Para two").identical);
   assert.ok(!compareTexts("Para one\nPara two", "Para one\nPara  two").identical);
+});
+
+test("inline segments rebuild both texts exactly", () => {
+  const pairs = [
+    ["You will recieve the bonus within 7 days.", "You will receive the bonus within 7 days."],
+    ["Deposit $10 or more to qualify", "Deposit $10 or more to qualify now"],
+    ["One two three four", "One three four five six"],
+    ["Same text", "Same text"],
+    ["", "Only pasted"],
+    ["Only fetched", ""],
+  ];
+  for (const [fetched, pasted] of pairs) {
+    const r = compareTexts(fetched, pasted);
+    const left = r.segments.map((s) => (s.kind === "equal" ? s.text : s.del)).join("");
+    const right = r.segments.map((s) => (s.kind === "equal" ? s.text : s.ins)).join("");
+    assert.equal(left, r.left.text, `fetched side of: ${fetched}`);
+    assert.equal(right, r.right.text, `pasted side of: ${pasted}`);
+    assert.equal(r.segments.filter((s) => s.kind === "change").length, r.issues.length);
+  }
+});
+
+test("inline segments widen a change to the whole word", () => {
+  const r = compareTexts("You will recieve the bonus", "You will receive the bonus");
+  const changes = r.segments.filter((s) => s.kind === "change");
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0].del, "recieve");
+  assert.equal(changes[0].ins, "receive");
+  assert.equal(changes[0].id, 0);
+  assert.deepEqual(r.segments.map((s) => s.kind), ["equal", "change", "equal"]);
+});
+
+test("inline segments keep a whole added or missing word as is", () => {
+  const added = compareTexts("Deposit now", "Deposit now today").segments.filter((s) => s.kind === "change");
+  assert.equal(added.length, 1);
+  assert.equal(added[0].del.trim(), "");
+  assert.match(added[0].ins, /today/);
+  const missing = compareTexts("Deposit now today", "Deposit now").segments.filter((s) => s.kind === "change");
+  assert.match(missing[0].del, /today/);
+  assert.equal(missing[0].ins.trim(), "");
+});
+
+test("identical texts produce a single unchanged segment", () => {
+  const r = compareTexts("Same\ntext", "Same text");
+  assert.equal(r.identical, true);
+  assert.deepEqual(r.segments, [{ kind: "equal", text: "Same\ntext" }]);
 });

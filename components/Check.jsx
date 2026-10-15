@@ -12,6 +12,7 @@ import CodeField, { setActiveIssue } from "@/components/CodeField";
 import IssuePanel from "@/components/IssuePanel";
 import CompareModal from "@/components/CompareModal";
 import { CODE_FIELDS, FIELD_LABELS, fieldsForView, fieldValues } from "@/lib/fields";
+import { useSpell } from "@/components/SpellProvider";
 import { analyzeFields, applyFixes, compareWithSource } from "@/lib/html-checks";
 
 const RUN_TOAST = "html-check-run";
@@ -45,9 +46,12 @@ export default function Check({ fieldMap, viewMode, sourceKey, title }) {
     [viewMode, defaults],
   );
 
+  // Spell check settings, dictionary and ignore list live in <SpellProvider> (opened from the navbar).
+  const { spell, enabled: spellOn, ignoreWord } = useSpell();
+
   // Analysis runs on every edit (cheap), at low priority so typing stays smooth.
   const deferredInputs = useDeferredValue(inputs);
-  const analysis = useMemo(() => analyzeFields(deferredInputs), [deferredInputs]);
+  const analysis = useMemo(() => analyzeFields(deferredInputs, { spell }), [deferredInputs, spell]);
   const { issues, summary } = analysis;
 
   const issuesByField = useMemo(() => {
@@ -122,7 +126,8 @@ export default function Check({ fieldMap, viewMode, sourceKey, title }) {
 
   /* -------------------------------- fixing ------------------------------- */
 
-  const fixableIssues = useMemo(() => issues.filter((i) => i.fix), [issues]);
+  // Spelling suggestions are guesses, so they are never part of "Fix all".
+  const fixableIssues = useMemo(() => issues.filter((i) => i.fix && !i.noBulk), [issues]);
 
   const applyTo = useCallback(
     (targets, label) => {
@@ -153,6 +158,15 @@ export default function Check({ fieldMap, viewMode, sourceKey, title }) {
     [inputs, deferredInputs, setInputs],
   );
 
+  const replaceWord = useCallback(
+    (issue, word) =>
+      applyTo(
+        [{ ...issue, fix: [{ from: issue.from, to: issue.to, insert: word }] }],
+        `Replaced “${issue.word}” with “${word}”`,
+      ),
+    [applyTo],
+  );
+
   /* ------------------------------ run + clear ----------------------------- */
 
   const hasContent = Object.values(inputs).some((v) => v && v.trim());
@@ -169,7 +183,7 @@ export default function Check({ fieldMap, viewMode, sourceKey, title }) {
       const checked = Object.values(inputs).filter((v) => v && v.trim()).length;
       toast.success("No issues found", {
         id: RUN_TOAST,
-        description: `${plural(checked, "field")} checked — everything looks good.`,
+        description: `${plural(checked, "field")} checked — everything looks good.${spellOn && !spell ? " Spelling is still loading, so it wasn't included yet." : ""}`,
         duration: 3500,
       });
       setActiveId(null);
@@ -226,6 +240,8 @@ export default function Check({ fieldMap, viewMode, sourceKey, title }) {
           onSelect={goTo}
           onStep={step}
           onFix={(issue) => applyTo([issue], "Fix applied")}
+          onSuggest={replaceWord}
+          onIgnore={ignoreWord}
           onFixAll={() => applyTo(fixableIssues)}
         />
       </div>
@@ -297,6 +313,7 @@ export default function Check({ fieldMap, viewMode, sourceKey, title }) {
               placeholder={`Enter ${fieldLabel}`}
               onChange={(v) => setInputs((prev) => ({ ...prev, [field]: v }))}
               onView={registerView}
+              onIgnoreWord={ignoreWord}
             />
           </div>
         );

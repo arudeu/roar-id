@@ -1,18 +1,20 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-import { CircleAlert, CircleCheck, Diff, Eraser, TriangleAlert, X } from "lucide-react";
+import { ChevronDown, ChevronUp, CircleAlert, CircleCheck, Diff, Eraser, TriangleAlert, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { buildPairs, mapScroll } from "@/lib/scroll-sync";
 import { compareTexts, htmlToText, tidyPaste } from "@/lib/text-compare";
 
 const TEXTAREA_CLASS =
-  "block h-52 w-full resize-y rounded-md border border-input bg-transparent p-3 font-mono text-xs leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+  "block h-52 w-full resize-y overflow-auto rounded-md border border-input bg-transparent p-3 font-mono text-xs leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
 const MAX_ISSUES_SHOWN = 200;
 
@@ -61,7 +63,7 @@ const DiffText = React.forwardRef(function DiffText({ original, side, tone, acti
   return (
     <div
       ref={ref}
-      className="h-52 overflow-auto rounded-md border bg-muted/30 p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
+      className="h-[26rem] min-h-40 resize-y overflow-auto rounded-md border bg-muted/30 p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
     >
       {original.length === 0 && <span className="text-muted-foreground">(empty)</span>}
       {nodes.map((n, i) => {
@@ -169,15 +171,160 @@ function IssueList({ issues, activeHunk, onSelect }) {
   );
 }
 
+/* ------------------------------ scroll sync ------------------------------ */
+
+/**
+ * Scrolling one pane scrolls the other. Only the pane you are using drives, so the
+ * two never fight. `getPairs(a, b)` returns matching scroll positions (see
+ * lib/scroll-sync.js); without it the panes scroll proportionally.
+ */
+function useScrollSync(aRef, bRef, enabled, getPairs) {
+  useEffect(() => {
+    const a = aRef.current;
+    const b = bRef.current;
+    if (!enabled || !a || !b) return;
+
+    let driver = a;
+    const claim = (el) => () => {
+      driver = el;
+    };
+    const follow = (src, dst, srcIsA) => () => {
+      if (driver !== src) return;
+      const srcMax = src.scrollHeight - src.clientHeight;
+      const dstMax = dst.scrollHeight - dst.clientHeight;
+      const pairs = getPairs?.(a, b);
+      const target = pairs
+        ? mapScroll(pairs, src.scrollTop, srcIsA)
+        : srcMax > 0
+          ? (src.scrollTop / srcMax) * dstMax
+          : 0;
+      if (Math.abs(dst.scrollTop - target) > 0.5) dst.scrollTop = target;
+    };
+
+    const onA = follow(a, b, true);
+    const onB = follow(b, a, false);
+    const claimA = claim(a);
+    const claimB = claim(b);
+    const events = ["pointerenter", "pointerdown", "wheel", "touchstart", "focus", "keydown"];
+    events.forEach((e) => {
+      a.addEventListener(e, claimA, { passive: true });
+      b.addEventListener(e, claimB, { passive: true });
+    });
+    a.addEventListener("scroll", onA, { passive: true });
+    b.addEventListener("scroll", onB, { passive: true });
+    return () => {
+      events.forEach((e) => {
+        a.removeEventListener(e, claimA);
+        b.removeEventListener(e, claimB);
+      });
+      a.removeEventListener("scroll", onA);
+      b.removeEventListener("scroll", onB);
+    };
+  }, [aRef, bRef, enabled, getPairs]);
+}
+
+/** Top of each difference inside a pane, in scroll coordinates. */
+function hunkTops(pane) {
+  const box = pane.getBoundingClientRect();
+  const tops = new Map();
+  pane.querySelectorAll("[data-hunk]").forEach((el) => {
+    const id = Number(el.dataset.hunk);
+    if (!tops.has(id)) tops.set(id, el.getBoundingClientRect().top - box.top + pane.scrollTop);
+  });
+  return tops;
+}
+
+/* --------------------------------- inline -------------------------------- */
+
+const FOLD_OVER = 180; // unchanged runs longer than this are folded in "changes only" mode
+const FOLD_KEEP = 70; // ...keeping this much context next to each change
+
+// Whitespace-only changes are invisible, so draw them.
+const visible = (t) => (/^\s+$/.test(t) ? t.replace(/\n/g, "↵").replace(/[^\S↵]/g, "␣") : t);
+
+const InlineDiff = React.forwardRef(function InlineDiff({ segments, activeHunk, onSelect, onlyChanges }, ref) {
+  const [open, setOpen] = useState(() => new Set());
+  useEffect(() => setOpen(new Set()), [segments]);
+  const last = segments.length - 1;
+
+  return (
+    <div
+      ref={ref}
+      className="h-[26rem] min-h-40 resize-y overflow-auto rounded-md border bg-muted/30 p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
+    >
+      {segments.map((seg, i) => {
+        if (seg.kind === "equal") {
+          const fold = onlyChanges && seg.text.length > FOLD_OVER && !open.has(i);
+          if (!fold) return <span key={i}>{seg.text}</span>;
+          const head = i === 0 ? "" : seg.text.slice(0, FOLD_KEEP);
+          const tail = i === last ? "" : seg.text.slice(-FOLD_KEEP);
+          const hidden = seg.text.length - head.length - tail.length;
+          return (
+            <React.Fragment key={i}>
+              {head}
+              <button
+                type="button"
+                onClick={() => setOpen((prev) => new Set(prev).add(i))}
+                className="mx-1 my-0.5 inline-block rounded border border-dashed px-1.5 py-px text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                title="Show the unchanged text"
+              >
+                ⋯ {hidden} unchanged characters ⋯
+              </button>
+              {tail}
+            </React.Fragment>
+          );
+        }
+        const active = seg.id === activeHunk;
+        return (
+          <span
+            key={i}
+            data-hunk={seg.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => onSelect(seg.id)}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onSelect(seg.id))}
+            className={cn(
+              "cursor-pointer rounded-[2px] outline-none focus-visible:outline-2 focus-visible:outline-blue-500",
+              active && "outline-2 outline-offset-2 outline-blue-500",
+            )}
+          >
+            {seg.del && (
+              <span className="bg-red-200 px-px text-red-950 line-through decoration-red-700/70 dark:bg-red-500/40 dark:text-red-50">
+                {visible(seg.del)}
+              </span>
+            )}
+            {seg.ins && (
+              <span className="bg-green-200 px-px font-semibold text-green-950 dark:bg-green-500/40 dark:text-green-50">
+                {visible(seg.ins)}
+              </span>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
+});
+
+/* ---------------------------------- modal -------------------------------- */
+
 export default function CompareModal({ label, fetched: rawFetched = "", onClose }) {
   // Sitecore values are usually HTML; compare what a reader sees, not the markup.
   const { text: fetched, converted } = useMemo(() => htmlToText(rawFetched), [rawFetched]);
   const [pasted, setPasted] = useState("");
   const [result, setResult] = useState(null);
+  const [runId, setRunId] = useState(0);
   const [activeHunk, setActiveHunk] = useState(null);
+  const [view, setView] = useState("side"); // "side" | "inline"
+  const [onlyChanges, setOnlyChanges] = useState(true);
+  const [ticks, setTicks] = useState([]);
+
   const dialogRef = useRef(null);
+  const fetchedBox = useRef(null);
+  const pastedBox = useRef(null);
   const leftPane = useRef(null);
   const rightPane = useRef(null);
+  const inlinePane = useRef(null);
+  const pairCache = useRef({ key: "", pairs: null });
 
   // Escape closes, background doesn't scroll while the modal is open.
   useEffect(() => {
@@ -192,21 +339,84 @@ export default function CompareModal({ label, fetched: rawFetched = "", onClose 
     };
   }, [onClose]);
 
-  // Scroll both panes to the selected difference.
+  /* ----------------------------- scroll syncing ---------------------------- */
+
+  // Matching scroll positions for the two result panes, measured from the real layout.
+  const getPanePairs = useCallback(
+    (left, right) => {
+      const key = [runId, left.scrollHeight, right.scrollHeight, left.clientWidth, right.clientWidth, left.clientHeight, right.clientHeight].join("|");
+      if (pairCache.current.key === key) return pairCache.current.pairs;
+      const l = hunkTops(left);
+      const r = hunkTops(right);
+      const margin = 24; // keep a little context above the difference
+      const anchors = [...l.keys()]
+        .filter((id) => r.has(id))
+        .sort((x, y) => x - y)
+        .map((id) => ({ a: l.get(id) - margin, b: r.get(id) - margin }));
+      const pairs = buildPairs(
+        anchors,
+        left.scrollHeight - left.clientHeight,
+        right.scrollHeight - right.clientHeight,
+      );
+      pairCache.current = { key, pairs };
+      return pairs;
+    },
+    [runId],
+  );
+
+  useScrollSync(fetchedBox, pastedBox, true); // the two text boxes, line for line as far as possible
+  useScrollSync(leftPane, rightPane, !!result && view === "side", getPanePairs);
+
+  // Bring the selected difference into view (both panes line up on it).
   useEffect(() => {
-    if (activeHunk === null) return;
-    [leftPane, rightPane].forEach((pane) => {
-      const el = pane.current?.querySelector(`[data-hunk="${activeHunk}"]`);
-      if (el && pane.current) {
-        const box = pane.current.getBoundingClientRect();
-        const rect = el.getBoundingClientRect();
-        pane.current.scrollTo({
-          top: pane.current.scrollTop + (rect.top - box.top) - box.height / 2,
-          behavior: "smooth",
-        });
-      }
-    });
-  }, [activeHunk]);
+    if (activeHunk === null || !result) return;
+    if (view === "side") {
+      const left = leftPane.current;
+      const right = rightPane.current;
+      const el = left?.querySelector(`[data-hunk="${activeHunk}"]`);
+      if (!left || !right || !el) return;
+      const pairs = getPanePairs(left, right);
+      const y = hunkTops(left).get(activeHunk) - left.clientHeight / 2;
+      const max = left.scrollHeight - left.clientHeight;
+      const target = Math.max(0, Math.min(y, max));
+      left.scrollTop = target;
+      right.scrollTop = mapScroll(pairs, target, true);
+    } else {
+      const pane = inlinePane.current;
+      const el = pane?.querySelector(`[data-hunk="${activeHunk}"]`);
+      if (!pane || !el) return;
+      const box = pane.getBoundingClientRect();
+      const top = el.getBoundingClientRect().top - box.top + pane.scrollTop - pane.clientHeight / 2;
+      pane.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    }
+  }, [activeHunk, view, result, getPanePairs]);
+
+  // Rail of difference markers next to the side-by-side panes.
+  useLayoutEffect(() => {
+    const pane = leftPane.current;
+    if (!result || view !== "side" || !pane) {
+      setTicks([]);
+      return;
+    }
+    const measure = () => {
+      const tops = hunkTops(pane);
+      setTicks(
+        result.issues.map((issue) => ({
+          id: issue.id,
+          type: issue.type,
+          message: issue.message,
+          pct: Math.min(100, ((tops.get(issue.id) ?? 0) / Math.max(1, pane.scrollHeight)) * 100),
+        })),
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(pane);
+    return () => ro.disconnect();
+  }, [result, view, runId]);
+
+  /* -------------------------------- actions -------------------------------- */
 
   const handlePaste = (e) => {
     const text = e.clipboardData?.getData("text");
@@ -216,7 +426,7 @@ export default function CompareModal({ label, fetched: rawFetched = "", onClose 
     const before = pasted.slice(0, el.selectionStart);
     const after = pasted.slice(el.selectionEnd);
 
-    // Both strings are trimmed the same way at the start, so the cursor lands right after the pasted text.
+    // Both strings are tidied the same way at the start, so the cursor lands right after the pasted text.
     const combined = tidyPaste(before + text + after);
     const cursor = Math.min(tidyPaste(before + text).length, combined.length);
 
@@ -237,6 +447,7 @@ export default function CompareModal({ label, fetched: rawFetched = "", onClose 
     }
     const next = compareTexts(fetched, pasted);
     setResult(next);
+    setRunId((n) => n + 1);
     setActiveHunk(next.issues.length ? next.issues[0].id : null);
   };
 
@@ -245,6 +456,15 @@ export default function CompareModal({ label, fetched: rawFetched = "", onClose 
     setResult(null);
     setActiveHunk(null);
   };
+
+  const step = (dir) => {
+    if (!result?.issues.length) return;
+    const n = result.issues.length;
+    const at = activeHunk === null ? (dir > 0 ? -1 : 0) : activeHunk;
+    setActiveHunk((at + dir + n) % n);
+  };
+
+  const total = result?.issues.length ?? 0;
 
   return createPortal(
     <div
@@ -276,6 +496,7 @@ export default function CompareModal({ label, fetched: rawFetched = "", onClose 
               </div>
               <textarea
                 id="compare-fetched"
+                ref={fetchedBox}
                 readOnly
                 value={fetched}
                 placeholder="No value was fetched for this field"
@@ -287,10 +508,11 @@ export default function CompareModal({ label, fetched: rawFetched = "", onClose 
               <Label htmlFor="compare-pasted">Paste text to compare:</Label>
               <textarea
                 id="compare-pasted"
+                ref={pastedBox}
                 value={pasted}
                 onPaste={handlePaste}
                 onChange={handleChange}
-                placeholder="Paste here — extra spaces are removed, line breaks are kept"
+                placeholder="Paste here — extra spaces and blank lines are removed, line breaks are kept"
                 className={TEXTAREA_CLASS}
                 spellCheck={false}
               />
@@ -306,7 +528,7 @@ export default function CompareModal({ label, fetched: rawFetched = "", onClose 
             </Button>
             <p className="text-xs text-muted-foreground">
               Fetched HTML is converted to plain text first. Bullets and numbering are ignored, and line breaks count
-              as spaces.
+              as spaces. The two boxes scroll together.
             </p>
           </div>
 
@@ -314,49 +536,124 @@ export default function CompareModal({ label, fetched: rawFetched = "", onClose 
             <div className="space-y-4">
               <div
                 className={cn(
-                  "flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-semibold",
+                  "flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 text-sm font-semibold",
                   result.identical
                     ? "border-green-300 bg-green-50 text-green-800 dark:bg-green-950/40 dark:text-green-300"
                     : "border-red-300 bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-300",
                 )}
               >
                 {result.identical ? <CircleCheck className="size-5" /> : <CircleAlert className="size-5" />}
-                {result.identical
-                  ? "The texts match."
-                  : `${result.issues.length} difference${result.issues.length === 1 ? "" : "s"} found.`}
+                <span className="mr-auto">
+                  {result.identical
+                    ? "The texts match."
+                    : `${total} difference${total === 1 ? "" : "s"} found.`}
+                </span>
+                {!result.identical && (
+                  <span className="flex items-center gap-1 font-normal text-foreground">
+                    <span className="px-1 font-mono text-xs tabular-nums">
+                      {activeHunk === null ? "–" : activeHunk + 1} / {total}
+                    </span>
+                    <Button size="icon-sm" variant="outline" onClick={() => step(-1)} aria-label="Previous difference">
+                      <ChevronUp />
+                    </Button>
+                    <Button size="icon-sm" variant="outline" onClick={() => step(1)} aria-label="Next difference">
+                      <ChevronDown />
+                    </Button>
+                  </span>
+                )}
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 text-sm font-bold">
-                    Fetched
-                    <Badge variant="error">in fetched only</Badge>
-                  </div>
-                  <DiffText
-                    ref={leftPane}
-                    original={fetched}
-                    side={result.left}
-                    tone="removed"
-                    activeHunk={activeHunk}
-                  />
+              {!result.identical && (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <Tabs value={view} onValueChange={setView}>
+                    <TabsList className="h-8">
+                      <TabsTrigger value="side">Side by side</TabsTrigger>
+                      <TabsTrigger value="inline">Inline changes</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                  {view === "inline" && (
+                    <label className="flex cursor-pointer items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={onlyChanges}
+                        onChange={(e) => setOnlyChanges(e.target.checked)}
+                        className="size-4 accent-[#d4b962]"
+                      />
+                      Fold unchanged text
+                    </label>
+                  )}
+                  <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="rounded bg-red-200 px-1 text-red-950 line-through dark:bg-red-500/40 dark:text-red-50">
+                      fetched only
+                    </span>
+                    <span className="rounded bg-green-200 px-1 font-semibold text-green-950 dark:bg-green-500/40 dark:text-green-50">
+                      pasted only
+                    </span>
+                  </span>
                 </div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 text-sm font-bold">
-                    Pasted
-                    <Badge variant="success">in pasted only</Badge>
+              )}
+
+              {(result.identical || view === "side") && (
+                <>
+                  <div className="grid gap-4 md:grid-cols-[1fr_0.75rem_1fr]">
+                    <div className="flex items-center gap-2 text-sm font-bold">
+                      Fetched
+                      <Badge variant="error">in fetched only</Badge>
+                    </div>
+                    <span className="hidden md:block" />
+                    <div className="flex items-center gap-2 text-sm font-bold">
+                      Pasted
+                      <Badge variant="success">in pasted only</Badge>
+                    </div>
                   </div>
-                  <DiffText
-                    ref={rightPane}
-                    original={pasted}
-                    side={result.right}
-                    tone="added"
+                  <div className="grid gap-4 md:grid-cols-[1fr_0.75rem_1fr]">
+                    <DiffText ref={leftPane} original={fetched} side={result.left} tone="removed" activeHunk={activeHunk} />
+                    <div
+                      className="relative hidden rounded-full bg-muted md:block"
+                      role="group"
+                      aria-label="Where the differences are"
+                    >
+                      {ticks.map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setActiveHunk(t.id)}
+                          title={t.message}
+                          aria-label={`Go to difference ${t.id + 1}`}
+                          style={{ top: `${t.pct}%` }}
+                          className={cn(
+                            "absolute left-0 h-1.5 w-full -translate-y-1/2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+                            t.type === "space" ? "bg-amber-500" : "bg-red-500",
+                            activeHunk === t.id && "ring-2 ring-blue-500",
+                          )}
+                        />
+                      ))}
+                    </div>
+                    <DiffText ref={rightPane} original={pasted} side={result.right} tone="added" activeHunk={activeHunk} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    The two panes scroll together and stay lined up on each difference. An orange bar marks where the
+                    other side has extra text. The strip in the middle shows where every difference is — click one to
+                    jump to it. Greyed-out bullets and numbers are ignored.
+                  </p>
+                </>
+              )}
+
+              {!result.identical && view === "inline" && (
+                <>
+                  <InlineDiff
+                    ref={inlinePane}
+                    segments={result.segments}
                     activeHunk={activeHunk}
+                    onSelect={setActiveHunk}
+                    onlyChanges={onlyChanges}
                   />
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                An orange bar marks where the other side has extra text. Greyed-out bullets and numbers are ignored.
-              </p>
+                  <p className="text-xs text-muted-foreground">
+                    One merged text: struck-through red is only in the fetched text, green is only in the pasted text.
+                    A ␣ marks a space and ↵ a line break. Click a change to select it.
+                  </p>
+                </>
+              )}
 
               {!result.identical && (
                 <IssueList issues={result.issues} activeHunk={activeHunk} onSelect={setActiveHunk} />

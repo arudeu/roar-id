@@ -51,6 +51,7 @@ export default function CodeField({
   placeholder,
   height = "200px",
   onView,
+  onIgnoreWord,
 }) {
   const [view, setView] = useState(null);
 
@@ -78,7 +79,17 @@ export default function CodeField({
         severity: issue.severity,
         source: issue.title,
         message: issue.message,
-        actions: issue.fix
+        actions: issue.rule === "spelling"
+          ? [
+              ...(issue.suggestions || []).slice(0, 3).map((word) => ({
+                name: word,
+                apply(v, from, to) {
+                  v.dispatch({ changes: { from, to, insert: word } });
+                },
+              })),
+              { name: "Ignore", apply: () => onIgnoreWord?.(issue.word) },
+            ]
+          : issue.fix
           ? [
               {
                 name: "Fix",
@@ -93,7 +104,7 @@ export default function CodeField({
           : undefined,
       }));
     view.dispatch(setDiagnostics(view.state, diagnostics));
-  }, [view, issues, analyzedValue]);
+  }, [view, issues, analyzedValue, onIgnoreWord]);
 
   return (
     <div
