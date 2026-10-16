@@ -35,18 +35,22 @@ export default function MPPPreview({ fieldMap }) {
         </CardContent>
       </Card>
 
-      {/* Terms toggle */}
-      <button
-        type="button"
-        aria-expanded={showTerms}
-        onClick={() => setShowTerms(!showTerms)}
-        className="mb-3 flex w-full items-center justify-between border-y py-3 text-left font-bold outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-      >
-        <span>{fieldMap.tactitle}</span>
-        <Chevron className="size-4" />
-      </button>
+      {/* Terms toggle (only when the item has terms and conditions) */}
+      {fieldMap.termsandconditions && (
+        <>
+          <button
+            type="button"
+            aria-expanded={showTerms}
+            onClick={() => setShowTerms(!showTerms)}
+            className="mb-3 flex w-full items-center justify-between border-y py-3 text-left font-bold outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            <span>{fieldMap.tactitle}</span>
+            <Chevron className="size-4" />
+          </button>
 
-      {showTerms && <Rich html={fieldMap.termsandconditions} className="px-1" />}
+          {showTerms && <Rich html={fieldMap.termsandconditions} className="px-1" />}
+        </>
+      )}
     </div>
   );
 }
