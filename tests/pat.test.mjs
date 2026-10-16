@@ -138,3 +138,13 @@ test("icon URLs, dates and prize brackets", () => {
   assert.deepEqual(parsePrizes("[]"), []);
   assert.deepEqual(parsePrizes("nope"), []);
 });
+
+import { MPP_FIELDS } from "../lib/sitecore.js";
+
+test("MPP is detected by template or by fields, without terms and conditions", () => {
+  assert.equal(detectPageType({ promotiontitle: "x" }, {}, [], "mobilepromotion").type, "mpp");
+  assert.equal(detectPageType({ promotiontitle: "x" }, {}, [], "MobilePromotion").isMPP, true);
+  const fields = Object.fromEntries(MPP_FIELDS.map((k) => [k, "x"]));
+  assert.equal(detectPageType(fields, {}, []).type, "mpp");
+  assert.notEqual(detectPageType({ promotiontitle: "x" }, {}, [], "other").type, "mpp");
+});
