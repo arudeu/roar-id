@@ -304,17 +304,111 @@
   border: 1px solid var(--border);
   padding: 0.35rem 0.6rem;
 }
-/* CTA buttons authored with Bootstrap-style classes */
+/* Previews use GT America. The font file is not bundled: put GT-America-Regular.ttf in public/fonts/
+   (see public/fonts/README.txt). Until it is there the fallbacks below are used. */
+@font-face {
+  font-family: "GT America";
+  src: url("/fonts/GT-America-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+.preview-font {
+  font-family: "GT America";
+  src: url("/fonts/GT-America-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* CTA buttons authored with Bootstrap-style classes. --cta-bg / --cta-fg are set per brand by the
+   MPP preview (see lib/brands.js); the BetMGM gold is the default. */
 .rich .btn,
 .rich a.btn {
   display: inline-block;
-  padding: 0.5rem 1.25rem;
-  border-radius: 0.375rem;
-  font-weight: 600;
+  padding: 0.375rem 1rem;
+  border-radius: 50px;
+  font-weight: 400;
   text-decoration: none;
-  background: #d4b962;
-  color: #000;
+  background: var(--cta-bg, #d4b962);
+  color: var(--cta-fg, #000);
 }
 .rich .btn:hover {
   filter: brightness(0.95);
 }
+
+/* ---- MPP v2 preview (lib/mppv2.js output) ----
+   The live page's own stylesheet can't be loaded here, so this is a close stand-in for the
+   elements it renders. The root also has the .rich class for paragraph/list/link typography. */
+.mppv2 vn-pc-component-folder,
+.mppv2 vn-pc-text,
+.mppv2 vn-pc-image,
+.mppv2 vn-pc-toggle,
+.mppv2 vn-picture,
+.mppv2 vn-pc-component-header-v2,
+.mppv2 vn-public-page-loader,
+.mppv2 vn-page-matrix,
+.mppv2 [class^="vn-pm-"],
+.mppv2 vn-icon {
+  display: block;
+}
+.mppv2 .page-content,
+.mppv2 .back-banner {
+  max-width: 40rem;
+}
+.mppv2 .mx-auto { margin-inline: auto; }
+.mppv2 .m-0 { margin: 0; }
+.mppv2 .p-0 { padding: 0; }
+.mppv2 .p-2 { padding: 0.5rem; }
+.mppv2 .px-1 { padding-inline: 0.25rem; }
+.mppv2 .py-2 { padding-block: 0.5rem; }
+.mppv2 .mb-2 { margin-bottom: 0.5rem; }
+.mppv2 .mb-3 { margin-bottom: 1rem; }
+.mppv2 .mt-4 { margin-top: 1.5rem; }
+.mppv2 .d-flex { display: flex; }
+.mppv2 .d-inline-block { display: inline-block; }
+.mppv2 .pc-h { font-weight: 700; line-height: 1.2; margin: 0 0 0.5rem; }
+.mppv2 .h4-v2 { font-size: 1.5rem; }
+.mppv2 .h5-v2 { font-size: 1.125rem; }
+.mppv2 .h6-v2 { font-size: 1rem; }
+.mppv2 .mb-2.pc-h { margin-bottom: 0.5rem; }
+.mppv2 .back-banner { margin-bottom: 0.75rem; }
+.mppv2 .back-banner-content { position: relative; padding-left: 2rem; }
+.mppv2 .back-banner-content .pc-header { display: inline-block; }
+.mppv2 .back-banner-content .pc-txt { position: absolute; top: 0; left: 0; }
+.mppv2 .back-banner-content .back-link img { display: block; width: 1.5rem; height: 1.5rem; }
+.mppv2 .top-image .pc-img { display: block; width: 100%; height: auto; border-radius: 0.25rem; }
+.mppv2 .bottom-divider { border-bottom: 1px solid #dee2e6; padding-bottom: 1rem; margin-bottom: 1rem; }
+.mppv2 .list-icon-prize ol { counter-reset: step; list-style: none; padding-left: 0; }
+.mppv2 .list-icon-prize ol > li { counter-increment: step; position: relative; padding-left: 2.25rem; margin-bottom: 0.75rem; }
+.mppv2 .list-icon-prize ol > li::before {
+  content: counter(step);
+  position: absolute; left: 0; top: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.5rem; height: 1.5rem; border-radius: 9999px;
+  background: var(--cta-bg, #d4b962); color: var(--cta-fg, #000); font-size: 0.8rem; font-weight: 700;
+}
+.mppv2 .cta-container { gap: 0.5rem; }
+.mppv2 .cta { flex: 1 1 0; min-width: 0; }
+.mppv2 .btn {
+  display: inline-block; padding: 0.6rem 1rem; border-radius: 0.375rem;
+  font-weight: 700; text-align: center; text-decoration: none; cursor: pointer;
+}
+.mppv2 .btn-block { display: block; width: 100%; }
+.mppv2 .btn-primary { background: #1f00ae; color: #fff; }
+/* terms toggle: a hidden checkbox + label, exactly how the live page does it */
+.mppv2 .pc-toggle-checker { position: absolute; opacity: 0; pointer-events: none; }
+.mppv2 .pc-toggle-label {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.75rem 0; border-block: 1px solid #dee2e6; font-weight: 700; cursor: pointer;
+}
+.mppv2 .pc-toggle-txt { display: none; padding: 1rem 0.25rem 0; font-size: 0.875rem; }
+.mppv2 .pc-toggle-checker:checked ~ .pc-toggle-txt { display: block; }
+.mppv2 .pc-toggle-checker:focus-visible + .pc-toggle-label { outline: 2px solid #1f00ae; outline-offset: 2px; }
+.mppv2 .pc-toggle__icon-up { display: none; }
+.mppv2 .pc-toggle-checker:checked + .pc-toggle-label .pc-toggle__icon-up { display: block; }
+.mppv2 .pc-toggle-checker:checked + .pc-toggle-label .pc-toggle__icon-down { display: none; }
+.mppv2 .pc-toggle-label vn-icon { width: 24px; height: 24px; }
+.mppv2 .pc-toggle-txt ul ul,
+.mppv2 .pc-toggle-txt ul ul ul { margin-bottom: 0; }
+

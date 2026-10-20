@@ -11,18 +11,26 @@ import { Label } from "@/components/ui/label";
 import CodeField, { setActiveIssue } from "@/components/CodeField";
 import IssuePanel from "@/components/IssuePanel";
 import CompareModal from "@/components/CompareModal";
-import { CODE_FIELDS, FIELD_LABELS, fieldsForView, fieldValues } from "@/lib/fields";
+import CtaSummary from "@/components/CtaSummary";
+import { CODE_FIELDS, CTA_SOURCES, FIELD_LABELS, fieldsForView, fieldValues } from "@/lib/fields";
 import { useSpell } from "@/components/SpellProvider";
-import { analyzeFields, applyFixes, compareWithSource } from "@/lib/html-checks";
+import { analyzeFields, applyFixes, compareWithSource, switchCtaDomainInValues } from "@/lib/html-checks";
 
 const RUN_TOAST = "html-check-run";
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-export default function Check({ fieldMap, viewMode, sourceKey, title }) {
+export default function Check({ fieldMap, viewMode, sourceKey, title, brand }) {
   const defs = useMemo(() => fieldsForView(viewMode, fieldMap), [viewMode, fieldMap]);
   // fetched values, including the generated per-step fields
-  const values = useMemo(() => fieldValues(viewMode, fieldMap), [viewMode, fieldMap]);
+  const fetchedValues = useMemo(() => fieldValues(viewMode, fieldMap), [viewMode, fieldMap]);
+  // MPP: CTA and game tile links are switched from nj.betmgm.com to the site in the item's path before they prefill the
+  // editor, so the fields start out correct. The same switched values are what the fields are compared
+  // against, so that switch never shows up as "Differs from Sitecore".
+  const values = useMemo(
+    () => switchCtaDomainInValues(fetchedValues, brand?.domain),
+    [fetchedValues, brand?.domain],
+  );
 
   const defaults = useMemo(
     () =>
@@ -51,7 +59,23 @@ export default function Check({ fieldMap, viewMode, sourceKey, title }) {
 
   // Analysis runs on every edit (cheap), at low priority so typing stays smooth.
   const deferredInputs = useDeferredValue(inputs);
-  const analysis = useMemo(() => analyzeFields(deferredInputs, { spell }), [deferredInputs, spell]);
+  // CTA consistency: Fullview Description (last line), Overlay CTA and Toaster CTA must share the same
+  // link and name. The current view uses what is in the editor; the other views use their own edits
+  // (if any) or the fetched Sitecore value.
+  const ctaSources = useMemo(() => {
+    if (!CTA_SOURCES.some((s) => s.view === viewMode)) return null;
+    return CTA_SOURCES.map(({ view, field, label, lastLine }) => ({
+      field,
+      label,
+      lastLine,
+      value: view === viewMode ? (deferredInputs[field] ?? "") : (drafts[view]?.[field] ?? fieldMap[field] ?? ""),
+    }));
+  }, [viewMode, deferredInputs, drafts, fieldMap]);
+
+  const analysis = useMemo(
+    () => analyzeFields(deferredInputs, { spell, cta: ctaSources ?? undefined, ctaDomain: brand?.domain }),
+    [deferredInputs, spell, ctaSources, brand?.domain],
+  );
   const { issues, summary } = analysis;
 
   const issuesByField = useMemo(() => {
@@ -245,6 +269,13 @@ export default function Check({ fieldMap, viewMode, sourceKey, title }) {
           onFixAll={() => applyTo(fixableIssues)}
         />
       </div>
+
+      {ctaSources && (
+        <CtaSummary
+          sources={ctaSources}
+          activeField={CTA_SOURCES.find((s) => s.view === viewMode)?.field}
+        />
+      )}
 
       {defs.map(({ key: field, source, tab, hint, label, code }) => {
         const fieldLabel = label || FIELD_LABELS[field] || field;

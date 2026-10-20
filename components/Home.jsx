@@ -16,12 +16,14 @@ import OverlayPreview from "./previews/OverlayPreview";
 import ToasterPreview from "./previews/ToasterPreview";
 import RewardTilesPreview from "./previews/RewardTilesPreview";
 import MPPPreview from "./previews/MPPPreview";
+import MPPv2Preview from "./previews/MPPv2Preview";
 import PATPreview from "./previews/PATPreview";
 import LeaderboardPreview from "./previews/LeaderboardPreview";
 import PromohubTilePreview from "./previews/PromohubTilePreview";
 import CreativePreview from "./previews/CreativePreview";
 import { useDebouncedValue } from "@/lib/hooks";
-import { cleanSitecoreId, detectPageType, fetchSitecoreItem, formatFetchedAt } from "@/lib/sitecore";
+import { cleanSitecoreId, detectPageType, fetchSitecoreItem, formatFetchedAt, isMppTemplate } from "@/lib/sitecore";
+import { detectBrand } from "@/lib/brands";
 
 const MODE_LABELS = {
   inbox: "Inbox",
@@ -29,6 +31,7 @@ const MODE_LABELS = {
   toaster: "Toaster",
   rewardtiles: "Reward Tiles",
   mpp: "MPP",
+  mppv2: "MPP v2",
   pat: "PAT",
   promohub: "Promohub Tile",
   creative: "Creative",
@@ -92,6 +95,11 @@ export default function Home() {
     setViewMode(detection.modes[0]);
   }, [detection.type, data]);
 
+  // MPP (mobilepromotion) items: the path says which site and product the promotion is for, which
+  // decides where CTA links point and which colours the CTA buttons use.
+  const isMppItem = isMppTemplate(data?.template);
+  const brand = useMemo(() => (isMppItem ? detectBrand(data?.path) : null), [isMppItem, data]);
+
   const dateTimeToday = formatFetchedAt(data?.fetchedAt);
   const sourceKey = data ? String(data.fetchedAt.getTime()) : "none";
   const isMPP = detection.isMPP;
@@ -102,7 +110,9 @@ export default function Home() {
     overlay: <OverlayPreview fieldMap={fieldMap} isMPP={isMPP} isPAT={isPAT} />,
     toaster: <ToasterPreview fieldMap={fieldMap} isMPP={isMPP} isPAT={isPAT} />,
     rewardtiles: <RewardTilesPreview fieldMap={fieldMap} isMPP={isMPP} isPAT={isPAT} />,
-    mpp: <MPPPreview fieldMap={fieldMap} isPAT={isPAT} />,
+    mpp: <MPPPreview fieldMap={fieldMap} isPAT={isPAT} brand={brand} />,
+    // Parses the item's whole XML tree, so it gets the raw response and the path (not the flat field map).
+    mppv2: <MPPv2Preview xml={data?.xml} path={data?.path} resetKey={sourceKey} />,
     pat: detection.isLeaderboard ? (
       <LeaderboardPreview fieldMap={fieldMap} />
     ) : (
@@ -115,11 +125,27 @@ export default function Home() {
   const activeMode = detection.modes.includes(viewMode) ? viewMode : detection.modes[0];
   // A leaderboard is a PAT page, but its checker has different fields.
   const checkMode = activeMode === "pat" && detection.isLeaderboard ? "leaderboard" : activeMode;
+  const isMppV2 = activeMode === "mppv2";
 
   return (
     <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
       <section aria-label="HTML check">
-        <Check fieldMap={fieldMap} viewMode={checkMode} sourceKey={sourceKey} title={MODE_LABELS[activeMode]} />
+        {isMppV2 ? (
+          <Card className="py-0">
+            <CardContent className="p-6 text-sm text-muted-foreground">
+              <p className="font-semibold text-foreground">MPP v2 text fields</p>
+              <p className="mt-1">The text fields to check will be added here. For now this view is the preview only.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Check
+            fieldMap={fieldMap}
+            viewMode={checkMode}
+            sourceKey={sourceKey}
+            title={MODE_LABELS[activeMode]}
+            brand={brand}
+          />
+        )}
       </section>
 
       <section
@@ -192,13 +218,41 @@ export default function Home() {
               <p className="mt-1 mb-2 text-sm text-muted-foreground">
                 Fetched data for: {fetchId}
               </p>
-              <div
-                key={activeMode}
-                className="theme-light rounded-lg border bg-white p-4 text-[#212529]"
-                aria-label={`${MODE_LABELS[activeMode]} preview`}
-              >
-                {previews[activeMode]}
-              </div>
+              {isMppItem && (
+                <p className="mb-2 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                  {brand ? (
+                    <>
+                      <span>
+                        Detected from path: <strong>{brand.name}</strong> · {brand.domain} · {brand.categoryLabel}
+                        {!brand.categoryDetected && " (product not in path, using default colours)"}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        CTA
+                        <span
+                          className="inline-block size-3.5 rounded-sm border"
+                          style={{ backgroundColor: brand.bg }}
+                          aria-hidden="true"
+                        />
+                        {brand.bg} · text {brand.fg === "#ffffff" ? "white" : "black"}
+                      </span>
+                    </>
+                  ) : (
+                    <span>Couldn&apos;t match the site in this item&apos;s path to a known brand, so CTAs are left as they are.</span>
+                  )}
+                </p>
+              )}
+              {isMppV2 ? (
+                // MPP v2 draws its own light preview box under its brand/state switcher.
+                <div key={activeMode}>{previews[activeMode]}</div>
+              ) : (
+                <div
+                  key={activeMode}
+                  className="theme-light preview-font rounded-lg border bg-white p-4 text-[#212529]"
+                  aria-label={`${MODE_LABELS[activeMode]} preview`}
+                >
+                  {previews[activeMode]}
+                </div>
+              )}
             </>
           )}
         </div>

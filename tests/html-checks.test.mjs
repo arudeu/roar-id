@@ -5,6 +5,8 @@ import {
   analyzeFields,
   applyFixes,
   compareWithSource,
+  ctaReport,
+  extractCta,
 } from "../lib/html-checks.js";
 
 const rules = (html) => analyzeField("f", html).map((i) => i.rule);
@@ -218,4 +220,89 @@ test("fixes never overlap and are idempotent", () => {
   const third = applyFixes(second.value, analyzeField("f", second.value));
   assert.equal(third.value, second.value);
   assert.ok(first.value.length > 0);
+});
+
+/* ------------------------------- CTA consistency ------------------------------- */
+
+const CTA = '<a class="btn" href="https://sports.betmgm.com/en/promo?x=1&amp;y=2">Claim Now</a>';
+const ctaSources = (detail, overlay, toaster) => [
+  { field: "detaildescription", label: "Fullview Description", lastLine: true, value: detail },
+  { field: "overlaycta", label: "Overlay CTA", value: overlay },
+  { field: "toastercta", label: "Toaster CTA", value: toaster },
+];
+const ctaIssues = (inputs, sources) =>
+  analyzeFields(inputs, { cta: sources }).issues.filter((i) => i.rule.startsWith("cta-"));
+
+test("cta: extractCta reads the last line of Fullview Description", () => {
+  const desc = `<p>Some copy with <a href="https://other.com">a link</a></p>\n<p>${CTA}</p>\n`;
+  const c = extractCta(desc, { lastLine: true });
+  assert.equal(c.name, "Claim Now");
+  assert.equal(c.href, "https://sports.betmgm.com/en/promo?x=1&y=2");
+  assert.equal(desc.slice(c.hrefFrom, c.hrefTo), "https://sports.betmgm.com/en/promo?x=1&amp;y=2");
+  assert.equal(desc.slice(c.nameFrom, c.nameTo), "Claim Now");
+  // a link earlier in the copy is not the CTA
+  assert.notEqual(c.href, "https://other.com");
+  // single-line description: the last link on the line wins
+  assert.equal(extractCta(`<p>x <a href="a">One</a> ${CTA}</p>`, { lastLine: true }).name, "Claim Now");
+  assert.equal(extractCta("   ", { lastLine: true }), null);
+  assert.equal(extractCta("<p>No link here</p>", { lastLine: true }).missing, true);
+});
+
+test("cta: identical CTA everywhere produces no issues", () => {
+  const detail = `<p>Copy</p>\n${CTA}`;
+  const overlay = `<div class="text-center">${CTA}</div>`;
+  const toaster = CTA.replace("Claim Now", "  Claim&nbsp;Now ");
+  const inputs = { detaildescription: detail };
+  assert.deepEqual(ctaIssues(inputs, ctaSources(detail, overlay, toaster)), []);
+  assert.deepEqual(ctaIssues({ overlaycta: overlay }, ctaSources(detail, overlay, toaster)), []);
+  const r = ctaReport(ctaSources(detail, overlay, toaster));
+  assert.ok(r.comparable && r.hrefsMatch && r.namesMatch);
+});
+
+test("cta: different link is flagged on the href with exact offsets", () => {
+  const detail = `<p>Copy</p>\n${CTA}`;
+  const overlay = CTA.replace("/en/promo", "/en/other");
+  const [issue, ...rest] = ctaIssues({ overlaycta: overlay }, ctaSources(detail, overlay, CTA));
+  assert.equal(rest.length, 0);
+  assert.equal(issue.rule, "cta-mismatch");
+  assert.equal(issue.ctaPart, "href");
+  assert.equal(issue.severity, "error");
+  assert.equal(overlay.slice(issue.from, issue.to), "https://sports.betmgm.com/en/other?x=1&amp;y=2");
+  assert.match(issue.message, /Fullview Description/);
+  assert.match(issue.message, /Toaster CTA/);
+});
+
+test("cta: different name is flagged on the link text (case counts)", () => {
+  const detail = `<p>Copy</p>\n${CTA}`;
+  const toaster = CTA.replace("Claim Now", "Claim now");
+  const [issue, ...rest] = ctaIssues({ toastercta: toaster }, ctaSources(detail, CTA, toaster));
+  assert.equal(rest.length, 0);
+  assert.equal(issue.ctaPart, "name");
+  assert.equal(toaster.slice(issue.from, issue.to), "Claim now");
+  // the same mismatch shows on the Fullview Description when that view is open
+  const onDetail = ctaIssues({ detaildescription: detail }, ctaSources(detail, CTA, toaster));
+  assert.equal(onDetail.length, 1);
+  assert.equal(onDetail[0].ctaPart, "name");
+  assert.equal(detail.slice(onDetail[0].from, onDetail[0].to), "Claim Now");
+});
+
+test("cta: link and name can both differ; a missing CTA is reported", () => {
+  const detail = `<p>Copy</p>\n<a href="https://x.com/a">Go</a>`;
+  const issues = ctaIssues({ detaildescription: detail }, ctaSources(detail, CTA, CTA));
+  assert.deepEqual(issues.map((i) => i.ctaPart).sort(), ["href", "name"]);
+
+  const noCta = "<p>Copy only</p>";
+  const [missing] = ctaIssues({ detaildescription: noCta }, ctaSources(noCta, CTA, CTA));
+  assert.equal(missing.rule, "cta-missing");
+  assert.match(missing.message, /last line/);
+});
+
+test("cta: empty fields are skipped, and one CTA alone has nothing to compare", () => {
+  const detail = `<p>Copy</p>\n${CTA}`;
+  assert.deepEqual(ctaIssues({ detaildescription: detail }, ctaSources(detail, "", "")), []);
+  const r = ctaReport(ctaSources(detail, "", CTA.replace("Claim Now", "Other")));
+  assert.equal(r.items.length, 2);
+  assert.equal(r.namesMatch, false);
+  // without options.cta nothing changes
+  assert.deepEqual(analyzeFields({ overlaycta: CTA }).issues.filter((i) => i.rule.startsWith("cta-")), []);
 });
