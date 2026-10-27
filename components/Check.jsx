@@ -20,8 +20,9 @@ const RUN_TOAST = "html-check-run";
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-export default function Check({ fieldMap, viewMode, sourceKey, title, brand }) {
-  const defs = useMemo(() => fieldsForView(viewMode, fieldMap), [viewMode, fieldMap]);
+// fieldDefs: fields built from the item itself (MPP v2); otherwise they come from VIEW_FIELDS in lib/fields.js.
+export default function Check({ fieldMap, viewMode, sourceKey, title, brand, fieldDefs }) {
+  const defs = useMemo(() => fieldDefs ?? fieldsForView(viewMode, fieldMap), [fieldDefs, viewMode, fieldMap]);
   // fetched values, including the generated per-step fields
   const fetchedValues = useMemo(() => fieldValues(viewMode, fieldMap), [viewMode, fieldMap]);
   // MPP: CTA and game tile links are switched from nj.betmgm.com to the site in the item's path before they prefill the

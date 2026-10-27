@@ -1,61 +1,77 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseXml, parseMppV2, renderMppV2, evalCondition, applyBrand, swapSiteHost } from "../lib/mppv2.js";
-import { BRAND_OPTIONS, brandFor, detectBrand, pickState } from "../lib/brands.js";
+import {
+  parseXml, parseMppV2, parseParams, mergeParts, stubFolders, topFolders, findSitePath,
+  renderMppV2, extractMppV2Fields, evalCondition, applyBrand, swapSiteHost, swapMediaHost,
+} from "../lib/mppv2.js";
+import { detectBrand } from "../lib/brands.js";
 import { detectPageType } from "../lib/sitecore.js";
 
-/* ----------------------- fixture: the NHL Pick-A-Puck page ----------------------- */
+/* ------- fixtures: the NHL Pick-A-Puck page as the API returns it -------------------- */
 
 const x = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const field = (key, type, value) => `<field key="${key}" type="${type}"><content>${x(value)}</content></field>`;
-const item = (name, template, id, fields, kids = "") =>
-  `<item name="${name}" key="${name.toLowerCase()}" template="${template}" id="${id}" version="1" language="en"><fields>${fields.join("")}</fields>${kids}</item>`;
+const params = (o) =>
+  field("parameters", "Bwin Name Value List Sorted", `<bwinnamevalue>${Object.entries(o).map(([k, v]) => `<entry key="${k}">${v}</entry>`).join("")}</bwinnamevalue>`);
+const item = (name, template, id, path, fields, kids = "") =>
+  `<item name="${name}" key="${name.toLowerCase()}" template="${template}" id="${id}" path="${path}">` +
+  `<fields>${fields.join("")}</fields>${kids}</item>`;
 const folder = (name, id, cls, max, kids = "") =>
-  item(name, "pccomponentfolder", id, [field("maxitems", "Integer", max), field("class", "Single-Line Text", cls)], kids);
-const text = (name, id, cls, html, header = "", extra = []) =>
-  item(name, "pctext", id, [field("text", "Rich Text", html), field("class", "Single-Line Text", cls), ...(header ? [field("header", "Single-Line Text", header)] : []), ...extra]);
+  item(name, "pccomponentfolder", id, `/id/${id}`, [field("maxitems", "Integer", max), field("class", "Single-Line Text", cls)], kids);
+const text = (name, id, cls, html, extra = []) =>
+  item(name, "pctext", id, `${BASE}/x/${name}`, [field("text", "Rich Text", html), field("class", "Single-Line Text", cls), ...extra]);
 
 const BASE = "/vanilla.mobile/m2.borgataonline.com/mobileportal-v1.0/publicpages/promotions/sports/nhl-pick-a-puck";
-const login = text("Login", "{C1638E61}", "d-inline-block py-2 px-1 cta",
-  '<a style="background-color:#5ac8e8; color:#fff;" class="btn btn-primary btn-block" menu-action="gotoLogin">Log In</a>',
-  "", [field("condition", "Single-Line Text", "NOT User.LoggedIn")]);
-const optIn = text("OptIn", "{AAAA}", "d-inline-block py-2 px-1 cta",
-  '<a style="background-color:#5ac8e8; color:#fff;" class="btn btn-primary btn-block" href="https://www.borgataonline.com/en/promo/offers">Bet Now</a>',
-  "", [field("condition", "Single-Line Text", "User.LoggedIn")]);
-const ctas = folder("CTAs", "{86A124E0}", "p-2 cta-container d-flex", 2, login + optIn);
+const IDS = { content: "{465BD449-282A-47F2-A3D4-10E2C14D927F}", ctas: "{86A124E0-0263-4D92-BF1B-727724433057}", back: "{57066018-8CCF-4A76-BED7-6BFD988E0EA3}" };
 
-const MORE_INFO = `<ul><li>Bonus Spins are valid for seven days.</li></ul>
-<p><a href="https://www.borgataonline.com/en/casino/launchng/whitehatthegoonies"><img alt="The Goonies" src="https://casinogames.borgataonline.com/htmllobby/images/x.jpg" width="100"></a></p>
-<p>Drop it <a href="https://www.borgataonline.com/en/promo/offers/grouped?filter=cb">here</a>.</p>`;
+const GAMES = `<ul><li>Bonus Spins are valid for seven days.</li></ul> <p> <a href="https://www.nj.betmgm.com/en/casino/launchng/whitehatthegoonies"><img alt="The Goonies" src="https://casinogames.borgataonline.com/x/goonies.jpg" width="100"></a> <a href="https://www.nj.betmgm.com/en/engage/pub/launchmgc?gd=a&amp;gm=b"><img alt="G" src="https://casinogames.borgataonline.com/x/g.jpg"></a> </p>`;
 
-const XML = `This XML file does not appear to have any style information associated with it. The document tree is shown below.
-<items xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">` +
-  item("nhl-pick-a-puck", "pm1colpage", "{A94A7117}", [
-    field("content", "RelativeTreelist", `${BASE}/customstyles|${BASE}/backbanner|${BASE}/content|${BASE}/ctas-mobile`),
-    field("pagetitle", "Single-Line Text", "NHL® Pick-A-Puck"),
-  ], [
-    text("CustomStyles", "{3581C880}", "", '<!--<div data-content-filter="x"> <link rel="stylesheet" href="http://localhost/styles.css"></div>--> <link rel="stylesheet" href="https://scmedia-us.itsfogo.com/$-$/2c03.css">'),
-    folder("BackBanner", "{5706}", "p-0 back-banner mx-auto", 1,
-      item("BackBannerDesktop", "pctext", "{BB01}", [
-        field("class", "Single-Line Text", "back-banner-content"),
-        field("header", "Single-Line Text", "My Promotions"),
-        field("text", "Rich Text", '<a class="back-link" href="https://www.borgataonline.com/en/promo/offers"><img src="https://scmedia.borgataonline.com/$-$/0b09.svg"></a>'),
-      ])),
-    folder("Content", "{465B}", "mx-auto page-content", 10,
-      folder("TopImage", "{7A5D}", "p-0 top-image m-0 mb-3", 1,
-        item("Image", "pcimage", "{1111}", [field("class", "Single-Line Text", ""), field("image", "Image", '<image mediaid="x" src="https://scmedia.borgataonline.com/$-$/0749.jpg" alt="XSELL_BS_3861900_MPP-1080x486" width="1080" />')])) +
-      folder("PageTitle", "{10F4}", "p-0 page-title bottom-divider", 1, text("PageTitle", "{2222}", "m-0 p-0 page-title-content", "", "NHL® Pick-A-Puck")) +
-      folder("PromoDetails", "{631C}", "p-0 promo-details bottom-divider", 1, text("PromoDetails", "{3333}", "promo-details-content", "<p>Turn big moments on the ice into even bigger thrills!</p>")) +
-      folder("HowItWorks", "{228C}", "p-0 m-0 how-it-works bottom-divider", 1, text("HowItWorks", "{4444}", "how-it-works-content list-icon-prize m-0 p-0", "<ol>\n<li>Bet $10 or more.</li>\n</ol>", "How It Works:")) +
-      folder("TermsToQualify", "{CB19}", "p-0 m-0 terms-to-qualify bottom-divider", 1, text("TermsToQualify", "{5555}", "m-0 p-0 terms-to-qualify-content", "<ul><li>Read the Terms.</li></ul>", "Important Details:")) +
-      folder("MoreInfo", "{6711}", "p-0 m-0 more-info", 1, text("MoreInfo", "{6666}", "m-0 more-info-content p-0", MORE_INFO, "More Info:")) +
-      folder("FullTermsAndConditions", "{7A07}", "p-0 m-0 mt-4 full-terms", 1,
-        item("Toggle", "pctoggle", "{7777}", [field("class", "Single-Line Text", "full-terms-content m-0 p-0"), field("header", "Single-Line Text", "Terms & Conditions"), field("text", "Rich Text", "<p><strong>DESCRIPTION OF PROMOTION:</strong></p>")]))) +
-    ctas + ctas, // the same CTA folder twice, like the export
-  ]) + "</items>";
+// 1) the page: its folders come back empty
+const PAGE_XML = `This XML file does not appear to have any style information associated with it. The document tree is shown below.
+<items>` + item("nhl-pick-a-puck", "pm1colpage", "{A94A7117-EE1D-470A-A13F-65CEE8830A4F}", "/id/a94a7117-ee1d-470a-a13f-65cee8830a4f", [
+  field("content", "RelativeTreelist", `${BASE}/customstyles|${BASE}/backbanner|${BASE}/content|${BASE}/ctas-mobile`),
+  field("pagetitle", "Single-Line Text", "NHL® Pick-A-Puck"),
+], [
+  text("CustomStyles", "{3581C880}", "", '<!--<div> <link rel="stylesheet" href="http://localhost/x.css"> </div>--> <link rel="stylesheet" href="https://scmedia-us.itsfogo.com/$-$/2c03.css">'),
+  folder("BackBanner", IDS.back, "p-0 back-banner mx-auto", 1),
+  folder("Content", IDS.content, "mx-auto page-content", 10),
+  folder("CTAs", IDS.ctas, "p-2 cta-container d-flex", 2),
+  folder("CTAs", IDS.ctas, "p-2 cta-container d-flex", 2), // the export repeats it
+]) + "</items>";
 
-const mk = (opts) => renderMppV2(parseMppV2(XML), opts);
-const borgata = detectBrand(BASE);
+// 2) Content, fetched by its id
+const CONTENT_XML = `<items>` + item("Content", "pccomponentfolder", IDS.content, "/id/465bd449", [field("maxitems", "Integer", 10), field("class", "Single-Line Text", "mx-auto page-content")],
+  folder("TopImage", "{7A5D}", "p-0 top-image m-0 mb-3", 1,
+    item("Default", "pcimage", "{16FA}", `${BASE}/content/topimage/default`, [field("image", "Image", '<img src="https://scmedia.nj.betmgm.com/$-$/0749a9158baa4e4aa60b28d3796afa5a.jpg" alt="XSELL_BS_3861900_MPP-1080x486" width="1080" height="486" />'), params({})])) +
+  folder("PageTitle", "{10F4}", "p-0 page-title bottom-divider", 1,
+    item("DefaultPageTitle", "pctext", "{BCC5}", `${BASE}/content/pagetitle/defaultpagetitle`, [field("class", "Single-Line Text", "p-0 m-0 page-title-content"), field("title", "Single-Line Text", "NHL® Pick-A-Puck"), params({ "expiry-date": "04/10/27, 11:59 PM", "title-class": "h4-v2 mb-2", "title-tag": "" })])) +
+  folder("PromoDetails", "{631C}", "p-0 promo-details bottom-divider", 1,
+    text("DefaultPromoDetails", "{81E8}", "promo-details-content", "<p>Turn big moments on the ice into even bigger thrills at the casino!</p>", [params({ "title-class": "d-none", "title-tag": "" })])) +
+  folder("HowItWorks", "{228C}", "p-0 m-0 how-it-works bottom-divider", 1,
+    text("DefaultHowItWorks", "{4098}", "how-it-works-content p-0 m-0 list-icon-prize", "<ol> <li>Bet $10 or more on NHL&reg; games.</li> </ol>", [field("title", "Single-Line Text", "How It Works:"), params({ "title-class": "h6-v2 mb-2", "title-tag": "" })])) +
+  folder("TermsToQualify", "{CB19}", "p-0 m-0 terms-to-qualify bottom-divider", 1,
+    text("DefaultTermsToQualify", "{6BED}", "terms-to-qualify-content p-0 m-0", "<ul> <li><strong>Prizes include:</strong></li> </ul>", [field("title", "Single-Line Text", "Important Details:"), params({ "title-class": "h6-v2 mb-2", "title-tag": "" })])) +
+  folder("MoreInfo", "{6711}", "p-0 m-0 more-info", 1,
+    text("DefaultMoreInfo", "{75D6}", "more-info-content p-0 m-0", GAMES, [field("title", "Single-Line Text", "More Info:"), params({ "title-class": "h6-v2 mb-2", "title-tag": "h1" })])) +
+  folder("FullTermsAndConditions", "{7A07}", "p-0 m-0 mt-4 full-terms", 1,
+    text("DefaultFullTerms", "{3ED8}", "full-terms-content p-0 m-0", '<p><strong>DESCRIPTION OF PROMOTION:</strong></p> <ul><li>Read <a style="color: #1f00ae;" href="https://www.nj.betmgm.com/en/promo/offers/grouped?filter=cb">here</a>.</li></ul>', [field("title", "Single-Line Text", "Terms & Conditions"), params({ render: "pc-toggle", "title-class": "mt-0" })]))
+) + `</items>`;
+
+// 3) CTAs, fetched by its id
+const LOGIN = '<a style="background-color:#5ac8e8; color:#fff;" class="btn btn-primary btn-block" menu-action="gotoLogin">Log In</a>';
+const CTAS_XML = `<items>` + item("CTAs", "pccomponentfolder", IDS.ctas, "/id/86a124e0", [field("maxitems", "Integer", 2), field("class", "Single-Line Text", "p-2 cta-container d-flex")],
+  text("Login", "{C163}", "d-inline-block py-2 px-1 cta", LOGIN, [params({ "button-type": "primary" }), field("condition", "Single-Line Text", "NOT User.LoggedIn")]) +
+  text("Play", "{AAAA}", "d-inline-block py-2 px-1 cta", '<a class="btn btn-primary btn-block" href="https://www.nj.betmgm.com/en/promo/offers">Play Now</a>', [field("condition", "Single-Line Text", "User.LoggedIn")])
+) + `</items>`;
+
+const BACK_XML = `<items>` + item("BackBanner", "pccomponentfolder", IDS.back, "/id/57066018", [field("maxitems", "Integer", 1), field("class", "Single-Line Text", "p-0 back-banner mx-auto")],
+  text("DefaultBackBannerDesktop", "{BB01}", "back-banner-content", '<a class="back-link" href="https://www.nj.betmgm.com/en/promo/offers"><img src="https://scmedia.nj.betmgm.com/$-$/0b09.svg"></a>', [field("title", "Single-Line Text", "My Promotions"), params({ "title-class": "h5-v2" })])
+) + `</items>`;
+
+const page = parseMppV2(PAGE_XML);
+const tree = mergeParts(page, [parseMppV2(CONTENT_XML), parseMppV2(CTAS_XML), parseMppV2(BACK_XML)]);
+const borgata = detectBrand(findSitePath(tree));
+const render = (o = {}) => renderMppV2(tree, { brand: borgata, ...o });
 
 /* --------------------------------- tests ---------------------------------------- */
 
@@ -63,76 +79,121 @@ test("xml: junk before the root, entities, CDATA and self-closing tags", () => {
   const root = parseXml('hello <a x="1 &amp; 2"><b/><![CDATA[<raw>]]>&#169; &lt;ok&gt;</a>');
   assert.equal(root.name, "a");
   assert.equal(root.attrs.x, "1 & 2");
-  assert.deepEqual(root.kids.filter((k) => typeof k !== "string").map((k) => k.name), ["b"]);
   assert.equal(root.kids.filter((k) => typeof k === "string").join(""), "<raw>© <ok>");
   assert.throws(() => parseXml("<a><b></a>"), /well-formed/);
   assert.throws(() => parseXml("no xml here"), /No XML/);
 });
 
-test("tree: items, fields and de-duplicated siblings", () => {
-  const tree = parseMppV2(XML);
-  assert.equal(tree.template, "pm1colpage");
-  assert.deepEqual(tree.children.map((c) => c.key), ["customstyles", "backbanner", "content", "ctas", "ctas"].filter((k, i, a) => a.indexOf(k) === i));
-  assert.equal(tree.fields.pagetitle, "NHL® Pick-A-Puck");
+test("params: the parameters field becomes a map", () => {
+  assert.deepEqual(parseParams('<bwinnamevalue><entry key="title-class">h4-v2 mb-2</entry><entry key="title-tag"></entry><entry key="render">pc-toggle</entry><entry key="x"/></bwinnamevalue>'),
+    { "title-class": "h4-v2 mb-2", "title-tag": "", render: "pc-toggle", x: "" });
+  assert.deepEqual(parseParams(""), {});
 });
 
-test("render: same structure and classes as the live page", () => {
-  const { html } = mk({ brand: borgata });
+test("fetch plan: content and the CTA folders are fetched by id (not the back banner)", () => {
+  assert.deepEqual(topFolders(page).map((s) => s.key), ["content", "ctas"]);
+  assert.equal(stubFolders(tree).length, 0); // nothing left to fetch once merged
+  assert.equal(tree.children.find((c) => c.key === "content").children.length, 7);
+});
+
+test("fetch plan: empty folders at any depth below are found and merged back in place", () => {
+  const inner = folder("Inner", "{AAAA-1}", "inner", 1); // came back cut off
+  const mid = folder("Mid", "{BBBB-2}", "mid", 1, inner);
+  const top = parseMppV2(`<items>${folder("Content", "{C0C0}", "c", 5, mid)}</items>`);
+  const withTop = { ...page, children: [top] };
+  assert.deepEqual(stubFolders(withTop).map((f) => f.key), ["inner"]);
+  // the by-id response for Inner (ids compared without braces/case)
+  const innerFull = parseMppV2(`<items>${folder("Inner", "{aaaa-1}", "inner", 1, text("Leaf", "{L1}", "leaf", "<p>deep</p>"))}</items>`);
+  const merged = mergeParts(withTop, [innerFull]);
+  assert.equal(stubFolders(merged).length, 0);
+  assert.equal(merged.children[0].children[0].children[0].children[0].fields.text, "<p>deep</p>");
+  // the original is not mutated
+  assert.equal(stubFolders(withTop).length, 1);
+});
+
+test("site: the root path is only /id/..., so the site comes from the content list", () => {
+  assert.equal(page.path.startsWith("/id/"), true);
+  assert.ok(findSitePath(page).includes("m2.borgataonline.com"));
+  assert.deepEqual([borgata.domain, borgata.category], ["borgataonline.com", "sports"]);
+  assert.equal(findSitePath(parseMppV2(`<items>${item("p", "pm1colpage", "{1}", "/id/1", [])}</items>`)), "");
+});
+
+test("render: structure, classes, headers and ids as on the live page", () => {
+  const { html } = render();
   assert.match(html, /^<div id="main-content"><vn-public-page-loader class="public-page-container"><vn-page-matrix class="page-matrix"><vn-pm-1col-page class="pm-1col pm-page pm-simple-layout">/);
   for (const cls of [
     "back-banner mx-auto p-0 pc-component pc-folder",
     "mx-auto page-content pc-component pc-folder",
     "m-0 mb-3 p-0 pc-component pc-folder top-image",
     "bottom-divider p-0 page-title pc-component pc-folder",
+    "m-0 p-0 page-title-content pc-component pc-text",
+    "pc-component pc-text promo-details-content",
     "bottom-divider how-it-works m-0 p-0 pc-component pc-folder",
-    "bottom-divider m-0 p-0 pc-component pc-folder terms-to-qualify",
+    "how-it-works-content list-icon-prize m-0 p-0 pc-component pc-text",
+    "m-0 p-0 pc-component pc-text terms-to-qualify-content",
+    "m-0 more-info-content p-0 pc-component pc-text",
     "full-terms m-0 mt-4 p-0 pc-component pc-folder",
+    "full-terms-content m-0 p-0 pc-component pc-toggle",
     "cta-container d-flex p-2 pc-component pc-folder",
     "cta d-inline-block pc-component pc-text px-1 py-2",
-    "how-it-works-content list-icon-prize m-0 p-0 pc-component pc-text",
-    "full-terms-content m-0 p-0 pc-component pc-toggle",
   ]) assert.ok(html.includes(`class="${cls}"`), `missing class "${cls}"`);
-  // headers: tag, size class and text
-  assert.match(html, /<h3 class="h5-v2 pc-h" id="defaultbackbannerdesktop"> My Promotions <\/h3>/);
-  assert.match(html, /<h3 class="h4-v2 mb-2 pc-h" id="defaultpagetitle"> NHL® Pick-A-Puck <\/h3>/);
-  assert.match(html, /<h3 class="h6-v2 mb-2 pc-h" id="defaulthowitworks"> How It Works: <\/h3>/);
-  assert.match(html, /<h1 class="h6-v2 mb-2 pc-h" id="defaultmoreinfo"> More Info: <\/h1>/);
+  assert.match(html, /<h3 class="pc-h h4-v2 mb-2" id="defaultpagetitle"> NHL® Pick-A-Puck <\/h3>/);
+  assert.match(html, /<h3 class="pc-h h6-v2 mb-2" id="defaulthowitworks"> How It Works: <\/h3>/);
+  assert.match(html, /<h3 class="pc-h h6-v2 mb-2" id="defaulttermstoqualify"> Important Details: <\/h3>/);
+  assert.match(html, /<h1 class="pc-h h6-v2 mb-2" id="defaultmoreinfo"> More Info: <\/h1>/);
+  assert.match(html, /<h3 class="pc-h h5-v2" id="defaultbackbannerdesktop"> My Promotions <\/h3>/);
+  // page title item has no text -> empty pc-txt, like the live page
+  assert.match(html, /id="defaultpagetitle"[^]*?<\/vn-pc-component-header-v2><div class="pc-txt"><\/div><\/vn-pc-text>/);
+  // promo details has no title -> no header
+  assert.match(html, /promo-details-content"><div class="pc-txt"><p>Turn big moments/);
 });
 
-test("render: order follows the treelist, the CTA sits after How It Works, duplicates are dropped", () => {
-  const { html } = mk({ brand: borgata });
-  const at = (s) => html.indexOf(s);
-  const order = ["top-image", "page-title", "promo-details", "how-it-works", "cta-container", "terms-to-qualify", "more-info", "full-terms"].map((c) => at(`${c} `) > -1 ? at(`${c} `) : at(c));
+test("render: order follows the content list, CTA sits after How It Works, repeated CTA folder is dropped", () => {
+  const { html } = render();
+  const at = (c) => html.indexOf(c);
+  const order = ["back-banner mx-auto", "top-image", "page-title", "promo-details", "how-it-works", "cta-container", "terms-to-qualify", "more-info", "full-terms"].map(at);
+  assert.ok(order.every((n) => n > -1), String(order));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
   assert.equal(html.split("cta-container").length - 1, 1);
-  assert.equal(html.split("Log In").length - 1, 1);
-  assert.ok(at("back-banner mx-auto") < at("page-content"));
+  assert.doesNotMatch(html, /customstyles/i);
 });
 
-test("render: image becomes the responsive <picture>", () => {
-  const { html } = mk({});
-  assert.match(html, /<source media="\(max-width: 320px\)" srcset="https:\/\/scmedia\.borgataonline\.com\/\$-\$\/0749\.jpg\?p=width320">/);
-  assert.match(html, /<source media="\(max-width: 1024px\)" srcset="[^"]+\?p=width1024">/);
-  assert.match(html, /<img class="pc-img" src="https:\/\/scmedia\.borgataonline\.com\/\$-\$\/0749\.jpg" alt="XSELL_BS_3861900_MPP-1080x486" width="1080">/);
+test("render: image is the responsive <picture> from the image field, on the page's site", () => {
+  const { html } = render();
+  assert.match(html, /<source media="\(max-width: 320px\)" srcset="https:\/\/scmedia\.borgataonline\.com\/\$-\$\/0749a9158baa4e4aa60b28d3796afa5a\.jpg\?p=width320">/);
+  assert.match(html, /<img class="pc-img" src="https:\/\/scmedia\.borgataonline\.com\/\$-\$\/0749a9158baa4e4aa60b28d3796afa5a\.jpg" alt="XSELL_BS_3861900_MPP-1080x486" width="1080">/);
 });
 
-test("render: toggle is a CSS checkbox with its label and hidden text", () => {
-  const { html } = mk({});
+test("render: links follow the page's site; media hosts and CTA styling are left as authored", () => {
+  const { html } = render();
+  assert.match(html, /href="https:\/\/www\.borgataonline\.com\/en\/casino\/launchng\/whitehatthegoonies"/);
+  assert.match(html, /href="https:\/\/www\.borgataonline\.com\/en\/engage\/pub\/launchmgc\?gd=a&amp;gm=b"/);
+  assert.match(html, /<a style="color: #1f00ae;" href="https:\/\/www\.borgataonline\.com\/en\/promo\/offers\/grouped\?filter=cb">/);
+  assert.match(html, /src="https:\/\/casinogames\.borgataonline\.com\/x\/goonies\.jpg"/);
+  assert.match(html, /<a style="background-color:#5ac8e8; color:#fff;" class="btn btn-primary btn-block" menu-action="gotoLogin">Log In<\/a>/);
+  // no known site -> nothing is rewritten
+  const plain = renderMppV2(tree, {}).html;
+  assert.match(plain, /href="https:\/\/www\.nj\.betmgm\.com\/en\/casino\/launchng/);
+  assert.match(plain, /src="https:\/\/scmedia\.nj\.betmgm\.com\//);
+});
+
+test("render: the terms item is a CSS toggle (render=pc-toggle), label from its title", () => {
+  const { html } = render();
   assert.match(html, /<input type="checkbox" class="pc-toggle-checker" id="pctoggle_chbx_0"><label class="pc-toggle-label" for="pctoggle_chbx_0">Terms &amp; Conditions /);
   assert.match(html, /<div class="pc-txt pc-toggle-txt"><p><strong>DESCRIPTION OF PROMOTION:/);
 });
 
-test("render: stylesheets and comments from the rich text never reach the page", () => {
-  const { html } = mk({});
-  assert.doesNotMatch(html, /<link|<style|<script|<!--|itsfogo|localhost/i);
+test("render: stylesheets and comments never reach the page", () => {
+  assert.doesNotMatch(render().html, /<link|<style|<script|<!--|itsfogo|localhost/i);
 });
 
-test("conditions: logged-out shows Log In, logged-in shows the other CTA", () => {
-  const out = mk({ loggedIn: false }).html;
+test("visitor: logged out shows Log In, logged in shows the other CTA", () => {
+  const out = render({ loggedIn: false }).html;
   assert.match(out, />Log In</);
-  assert.doesNotMatch(out, />Bet Now</);
-  const inn = mk({ loggedIn: true }).html;
-  assert.match(inn, />Bet Now</);
+  assert.doesNotMatch(out, />Play Now</);
+  const inn = render({ loggedIn: true }).html;
+  assert.match(inn, />Play Now</);
+  assert.match(inn, /href="https:\/\/www\.borgataonline\.com\/en\/promo\/offers"/);
   assert.doesNotMatch(inn, />Log In</);
 });
 
@@ -146,37 +207,29 @@ test("conditions: AND / OR / NOT / parentheses, unknown atoms stay visible and a
   assert.equal(evalCondition("", {}), true);
 });
 
-test("brand: detected from the path gives the Borgata sports CTA colour from the page", () => {
-  assert.deepEqual([borgata.name, borgata.domain, borgata.category, borgata.bg, borgata.fg], ["Borgata Online", "borgataonline.com", "sports", "#5ac8e8", "#ffffff"]);
-  const { html } = mk({ brand: borgata });
-  assert.match(html, /<a style="background-color:#5ac8e8; color:#ffffff;" class="btn btn-primary btn-block" menu-action="gotoLogin">Log In<\/a>/);
-});
-
-test("brand: switching brand and state moves links and recolours CTAs, not media", () => {
-  const betmgmOn = brandFor({ name: "BetMGM", domain: "on.betmgm.ca", category: "sports" });
-  const { html } = mk({ brand: betmgmOn });
-  assert.match(html, /href="https:\/\/www\.on\.betmgm\.ca\/en\/casino\/launchng\/whitehatthegoonies"/);
-  assert.match(html, /href="https:\/\/www\.on\.betmgm\.ca\/en\/promo\/offers\/grouped\?filter=cb"/);
-  assert.match(html, /style="background-color:#d4b962; color:#000000;"/);
-  assert.match(html, /src="https:\/\/casinogames\.borgataonline\.com\/htmllobby\/images\/x\.jpg"/); // media host untouched
-  assert.match(html, /src="https:\/\/scmedia\.borgataonline\.com\//);
-  const pa = mk({ brand: brandFor({ name: "Borgata Online", domain: "pa.borgataonline.com", category: "sports" }) }).html;
-  assert.match(pa, /href="https:\/\/www\.pa\.borgataonline\.com\/en\/promo\/offers\/grouped/);
-});
-
-test("brand: swapSiteHost only touches bare brand hosts", () => {
-  assert.equal(swapSiteHost("https://www.borgataonline.com/en/x", "nj.betmgm.com"), "https://www.nj.betmgm.com/en/x");
-  assert.equal(swapSiteHost("https://scmedia.borgataonline.com/a.jpg", "nj.betmgm.com"), "https://scmedia.borgataonline.com/a.jpg");
+test("site hosts: only bare brand hosts move", () => {
+  assert.equal(swapSiteHost("https://www.nj.betmgm.com/en/x", "borgataonline.com"), "https://www.borgataonline.com/en/x");
+  assert.equal(swapSiteHost("https://casinogames.borgataonline.com/a.jpg", "nj.betmgm.com"), "https://casinogames.borgataonline.com/a.jpg");
   assert.equal(swapSiteHost("https://example.com/", "nj.betmgm.com"), "https://example.com/");
-  assert.equal(swapSiteHost("https://pa.borgataonline.com/x", "borgataonline.com"), "https://borgataonline.com/x");
+  assert.equal(swapMediaHost("https://scmedia.nj.betmgm.com/$-$/a.jpg", "on.betmgm.ca"), "https://scmedia.on.betmgm.ca/$-$/a.jpg");
+  assert.equal(swapMediaHost("https://other.com/a.jpg", "on.betmgm.ca"), "https://other.com/a.jpg");
   assert.equal(applyBrand("<a href='https://nj.betmgm.com'>x</a>", null), "<a href='https://nj.betmgm.com'>x</a>");
 });
 
-test("brand options: every brand has states, NJ-first defaults, state code kept when switching brand", () => {
-  assert.deepEqual(BRAND_OPTIONS.find((b) => b.name === "BetMGM").states.map((s) => s.code).slice(0, 6), ["NJ", "PA", "MI", "WV", "ON", "AB"]);
-  assert.equal(pickState("Borgata Online", "PA").domain, "pa.borgataonline.com");
-  assert.equal(pickState("Borgata Online", "ON").domain, "borgataonline.com"); // no ON: first state
-  assert.equal(pickState("Party Poker", "NJ").domain, "nj.partypoker.com");
+test("checker fields: the text items under content, in page order, as authored", () => {
+  const { defs, values } = extractMppV2Fields(tree);
+  assert.deepEqual(defs.map((d) => d.key), [
+    "defaultpagetitle", "defaultpromodetails", "defaulthowitworkstitle", "defaulthowitworks",
+    "defaulttermstoqualifytitle", "defaulttermstoqualify", "defaultmoreinfotitle", "defaultmoreinfo",
+    "defaultfulltermstitle", "defaultfullterms",
+  ]);
+  assert.deepEqual(defs.find((d) => d.key === "defaultpagetitle"), { key: "defaultpagetitle", label: "Page Title" });
+  assert.deepEqual(defs.find((d) => d.key === "defaulthowitworks"), { key: "defaulthowitworks", label: "How It Works", prefill: true, code: true });
+  assert.equal(defs.find((d) => d.key === "defaulthowitworkstitle").label, "How It Works Title");
+  assert.equal(values.defaultpagetitle, "NHL® Pick-A-Puck");
+  assert.match(values.defaultmoreinfo, /href="https:\/\/www\.nj\.betmgm\.com\/en\/casino\/launchng/); // not switched
+  assert.match(values.defaulthowitworks, /NHL&reg; games/); // raw entities kept
+  assert.ok(!("login" in values) && !defs.some((d) => /login|play|backbanner|customstyles/.test(d.key)));
 });
 
 test("detect: pm1colpage items are MPP v2 pages", () => {
@@ -187,8 +240,8 @@ test("detect: pm1colpage items are MPP v2 pages", () => {
   assert.equal(detectPageType({}, {}, [], "mobilepromotion").type, "mpp");
 });
 
-test("render: unknown templates and unmatched treelist entries are reported, not fatal", () => {
-  const xml = `<items>${item("p", "pm1colpage", "{1}", [field("content", "RelativeTreelist", "/a/p/ghost|/a/p/box")], item("Box", "weird", "{2}", [field("x", "Single-Line Text", "y")]))}</items>`;
+test("render: unknown templates and unmatched content-list entries are reported, not fatal", () => {
+  const xml = `<items>${item("p", "pm1colpage", "{1}", "/id/1", [field("content", "RelativeTreelist", "/a/p/ghost|/a/p/box")], item("Box", "weird", "{2}", "/a/p/box", [field("x", "Single-Line Text", "y")]))}</items>`;
   const { html, notes } = renderMppV2(parseMppV2(xml));
   assert.match(html, /<vn-pm-1col-page/);
   assert.ok(notes.some((n) => /ghost/.test(n)));

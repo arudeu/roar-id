@@ -24,6 +24,7 @@ import CreativePreview from "./previews/CreativePreview";
 import { useDebouncedValue } from "@/lib/hooks";
 import { cleanSitecoreId, detectPageType, fetchSitecoreItem, formatFetchedAt, isMppTemplate } from "@/lib/sitecore";
 import { detectBrand } from "@/lib/brands";
+import { extractMppV2Fields } from "@/lib/mppv2";
 
 const MODE_LABELS = {
   inbox: "Inbox",
@@ -100,6 +101,10 @@ export default function Home() {
   const isMppItem = isMppTemplate(data?.template);
   const brand = useMemo(() => (isMppItem ? detectBrand(data?.path) : null), [isMppItem, data]);
 
+  // MPP v2: the text fields of the page's items go to the checker (values as authored in Sitecore).
+  const mppv2Tree = data?.mppv2?.tree ?? null;
+  const mppv2Fields = useMemo(() => (mppv2Tree ? extractMppV2Fields(mppv2Tree) : null), [mppv2Tree]);
+
   const dateTimeToday = formatFetchedAt(data?.fetchedAt);
   const sourceKey = data ? String(data.fetchedAt.getTime()) : "none";
   const isMPP = detection.isMPP;
@@ -111,8 +116,8 @@ export default function Home() {
     toaster: <ToasterPreview fieldMap={fieldMap} isMPP={isMPP} isPAT={isPAT} />,
     rewardtiles: <RewardTilesPreview fieldMap={fieldMap} isMPP={isMPP} isPAT={isPAT} />,
     mpp: <MPPPreview fieldMap={fieldMap} isPAT={isPAT} brand={brand} />,
-    // Parses the item's whole XML tree, so it gets the raw response and the path (not the flat field map).
-    mppv2: <MPPv2Preview xml={data?.xml} path={data?.path} resetKey={sourceKey} />,
+    // Renders the item's whole tree (page + its separately fetched folders), not the flat field map.
+    mppv2: <MPPv2Preview tree={mppv2Tree} loadNotes={data?.mppv2?.loadNotes} />,
     pat: detection.isLeaderboard ? (
       <LeaderboardPreview fieldMap={fieldMap} />
     ) : (
@@ -130,22 +135,14 @@ export default function Home() {
   return (
     <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
       <section aria-label="HTML check">
-        {isMppV2 ? (
-          <Card className="py-0">
-            <CardContent className="p-6 text-sm text-muted-foreground">
-              <p className="font-semibold text-foreground">MPP v2 text fields</p>
-              <p className="mt-1">The text fields to check will be added here. For now this view is the preview only.</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <Check
-            fieldMap={fieldMap}
-            viewMode={checkMode}
-            sourceKey={sourceKey}
-            title={MODE_LABELS[activeMode]}
-            brand={brand}
-          />
-        )}
+        <Check
+          fieldMap={isMppV2 ? (mppv2Fields?.values ?? {}) : fieldMap}
+          fieldDefs={isMppV2 ? (mppv2Fields?.defs ?? []) : undefined}
+          viewMode={checkMode}
+          sourceKey={sourceKey}
+          title={MODE_LABELS[activeMode]}
+          brand={isMppV2 ? null : brand}
+        />
       </section>
 
       <section
@@ -242,7 +239,7 @@ export default function Home() {
                 </p>
               )}
               {isMppV2 ? (
-                // MPP v2 draws its own light preview box under its brand/state switcher.
+                // MPP v2 draws its own light preview box under its visitor switch.
                 <div key={activeMode}>{previews[activeMode]}</div>
               ) : (
                 <div

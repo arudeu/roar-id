@@ -366,6 +366,8 @@
 .mppv2 .mb-3 { margin-bottom: 1rem; }
 .mppv2 .mt-4 { margin-top: 1.5rem; }
 .mppv2 .d-flex { display: flex; }
+.mppv2 .d-none { display: none; }
+.mppv2 .mt-0 { margin-top: 0; }
 .mppv2 .d-inline-block { display: inline-block; }
 .mppv2 .pc-h { font-weight: 700; line-height: 1.2; margin: 0 0 0.5rem; }
 .mppv2 .h4-v2 { font-size: 1.5rem; }
