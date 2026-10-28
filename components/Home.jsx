@@ -17,6 +17,7 @@ import ToasterPreview from "./previews/ToasterPreview";
 import RewardTilesPreview from "./previews/RewardTilesPreview";
 import MPPPreview from "./previews/MPPPreview";
 import MPPv2Preview from "./previews/MPPv2Preview";
+import AcqLpPreview from "./previews/AcqLpPreview";
 import PATPreview from "./previews/PATPreview";
 import LeaderboardPreview from "./previews/LeaderboardPreview";
 import PromohubTilePreview from "./previews/PromohubTilePreview";
@@ -24,6 +25,7 @@ import CreativePreview from "./previews/CreativePreview";
 import { useDebouncedValue } from "@/lib/hooks";
 import { cleanSitecoreId, detectPageType, fetchSitecoreItem, formatFetchedAt, isMppTemplate } from "@/lib/sitecore";
 import { detectBrand } from "@/lib/brands";
+import { extractAcqFields } from "@/lib/acqlp";
 import { extractMppV2Fields } from "@/lib/mppv2";
 
 const MODE_LABELS = {
@@ -33,6 +35,7 @@ const MODE_LABELS = {
   rewardtiles: "Reward Tiles",
   mpp: "MPP",
   mppv2: "MPP v2",
+  acqlp: "ACQ LP",
   pat: "PAT",
   promohub: "Promohub Tile",
   creative: "Creative",
@@ -105,6 +108,10 @@ export default function Home() {
   const mppv2Tree = data?.mppv2?.tree ?? null;
   const mppv2Fields = useMemo(() => (mppv2Tree ? extractMppV2Fields(mppv2Tree) : null), [mppv2Tree]);
 
+  // ACQ LP: hero / steps / terms values for the checker, read from the item tree.
+  const acqTree = data?.acqlp ?? null;
+  const acqFields = useMemo(() => (acqTree ? extractAcqFields(acqTree) : null), [acqTree]);
+
   const dateTimeToday = formatFetchedAt(data?.fetchedAt);
   const sourceKey = data ? String(data.fetchedAt.getTime()) : "none";
   const isMPP = detection.isMPP;
@@ -118,6 +125,7 @@ export default function Home() {
     mpp: <MPPPreview fieldMap={fieldMap} isPAT={isPAT} brand={brand} />,
     // Renders the item's whole tree (page + its separately fetched folders), not the flat field map.
     mppv2: <MPPv2Preview tree={mppv2Tree} loadNotes={data?.mppv2?.loadNotes} />,
+    acqlp: <AcqLpPreview tree={acqTree} />,
     pat: detection.isLeaderboard ? (
       <LeaderboardPreview fieldMap={fieldMap} />
     ) : (
@@ -131,17 +139,21 @@ export default function Home() {
   // A leaderboard is a PAT page, but its checker has different fields.
   const checkMode = activeMode === "pat" && detection.isLeaderboard ? "leaderboard" : activeMode;
   const isMppV2 = activeMode === "mppv2";
+  const isAcqLp = activeMode === "acqlp";
+  // These views build their fields from the item itself and draw their own preview box.
+  const customFields = isMppV2 ? mppv2Fields : isAcqLp ? acqFields : null;
+  const ownPreviewBox = isMppV2 || isAcqLp;
 
   return (
     <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
       <section aria-label="HTML check">
         <Check
-          fieldMap={isMppV2 ? (mppv2Fields?.values ?? {}) : fieldMap}
-          fieldDefs={isMppV2 ? (mppv2Fields?.defs ?? []) : undefined}
+          fieldMap={ownPreviewBox ? (customFields?.values ?? {}) : fieldMap}
+          fieldDefs={ownPreviewBox ? (customFields?.defs ?? []) : undefined}
           viewMode={checkMode}
           sourceKey={sourceKey}
           title={MODE_LABELS[activeMode]}
-          brand={isMppV2 ? null : brand}
+          brand={ownPreviewBox ? null : brand}
         />
       </section>
 
@@ -238,8 +250,8 @@ export default function Home() {
                   )}
                 </p>
               )}
-              {isMppV2 ? (
-                // MPP v2 draws its own light preview box under its visitor switch.
+              {ownPreviewBox ? (
+                // MPP v2 and ACQ LP draw their own preview box under their own switches.
                 <div key={activeMode}>{previews[activeMode]}</div>
               ) : (
                 <div

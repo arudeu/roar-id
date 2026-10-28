@@ -223,9 +223,10 @@ test("checker fields: the text items under content, in page order, as authored",
     "defaulttermstoqualifytitle", "defaulttermstoqualify", "defaultmoreinfotitle", "defaultmoreinfo",
     "defaultfulltermstitle", "defaultfullterms",
   ]);
-  assert.deepEqual(defs.find((d) => d.key === "defaultpagetitle"), { key: "defaultpagetitle", label: "Page Title" });
+  assert.deepEqual(defs.find((d) => d.key === "defaultpagetitle"), { key: "defaultpagetitle", label: "Page Title", prefill: true });
   assert.deepEqual(defs.find((d) => d.key === "defaulthowitworks"), { key: "defaulthowitworks", label: "How It Works", prefill: true, code: true });
-  assert.equal(defs.find((d) => d.key === "defaulthowitworkstitle").label, "How It Works Title");
+  assert.deepEqual(defs.find((d) => d.key === "defaulthowitworkstitle"), { key: "defaulthowitworkstitle", label: "How It Works Title", prefill: true });
+  assert.ok(defs.every((d) => d.prefill), "every field starts filled from Sitecore");
   assert.equal(values.defaultpagetitle, "NHL® Pick-A-Puck");
   assert.match(values.defaultmoreinfo, /href="https:\/\/www\.nj\.betmgm\.com\/en\/casino\/launchng/); // not switched
   assert.match(values.defaulthowitworks, /NHL&reg; games/); // raw entities kept
